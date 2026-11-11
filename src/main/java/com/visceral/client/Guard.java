@@ -40,6 +40,24 @@ final class Guard {
         }
     }
 
+    private static final Map<String, double[]> TIME = new HashMap<>();   // {smoothed ms}
+
+    /** Runs `r` as `part` and keeps a smoothed average of how long it takes (for the F3 screen). */
+    static void timed(String part, Runnable r) {
+        long t0 = System.nanoTime();
+        run(part, r);
+        double ms = (System.nanoTime() - t0) / 1e6;
+        double[] a = TIME.computeIfAbsent(part, k -> new double[1]);
+        a[0] = a[0] * 0.95 + ms * 0.05;
+    }
+
+    /** Average milliseconds per frame across the timed parts. */
+    static double frameMs() {
+        double s = 0;
+        for (double[] a : TIME.values()) s += a[0];
+        return s;
+    }
+
     /** How many parts have switched themselves off (for the F3 screen). */
     static int off() {
         int n = 0;

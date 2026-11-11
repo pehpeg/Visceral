@@ -682,7 +682,7 @@ public final class Blood {
 
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onRenderWorld(RenderWorldLastEvent event) {
-        Guard.run("Blood.onRenderWorld", () -> onRenderWorld0(event));
+        Guard.timed("Blood.onRenderWorld", () -> onRenderWorld0(event));
     }
 
     private static void onRenderWorld0(RenderWorldLastEvent event) {

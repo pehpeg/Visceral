@@ -92,7 +92,7 @@ public final class Flies {
 
     @SubscribeEvent
     public static void onRenderWorld(RenderWorldLastEvent event) {
-        Guard.run("Flies.onRenderWorld", () -> onRenderWorld0(event));
+        Guard.timed("Flies.onRenderWorld", () -> onRenderWorld0(event));
     }
 
     private static void onRenderWorld0(RenderWorldLastEvent event) {

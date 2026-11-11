@@ -642,7 +642,7 @@ public final class Gibs {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderWorld(RenderWorldLastEvent event) {
-        Guard.run("Gibs.onRenderWorld", () -> onRenderWorld0(event));
+        Guard.timed("Gibs.onRenderWorld", () -> onRenderWorld0(event));
     }
 
     private static void onRenderWorld0(RenderWorldLastEvent event) {

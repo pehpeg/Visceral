@@ -459,6 +459,7 @@ public final class Tracker {
         event.getLeft().add("");
         event.getLeft().add("Visceral " + Visceral.VERSION + (VisceralConfig.enabled ? "" : " (off)") + ": droplets " + Blood.dropCount()
                 + ", stains " + Blood.stainCount() + ", gibs " + Gibs.count() + ", flies " + Flies.count()
+                + String.format(", drawing %.2f ms/frame", Guard.frameMs())
                 + (Guard.off() > 0 ? ", " + Guard.off() + " part(s) switched off after errors" : ""));
         event.getLeft().add("Visceral last death: " + lastDeath);
     }

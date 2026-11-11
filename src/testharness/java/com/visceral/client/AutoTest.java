@@ -361,7 +361,8 @@ public final class AutoTest {
     }
 
     private static void counts(String tag) {
-        note(tag + ":   after death -> gibs=" + Gibs.count() + " droplets=" + Blood.dropCount());
+        note(tag + ":   after death -> gibs=" + Gibs.count() + " droplets=" + Blood.dropCount() + " stains=" + Blood.stainCount()
+                + String.format(" drawing=%.2fms", Guard.frameMs()));
     }
 
     private static void note(String s) {
