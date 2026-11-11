@@ -137,6 +137,11 @@ public final class AutoTest {
         VisceralConfig.gibs.limbLossChance = 1.0;
         VisceralConfig.gibs.limbLossDamage = 0.25;
         VisceralConfig.gibs.gibChance = 1.0;
+        VisceralConfig.extras.screenBlood = false;   // screenshots of the world, not of blood on the lens
+        mc.gameSettings.hideGUI = true;
+        mc.gameSettings.chatVisibility = net.minecraft.entity.player.EntityPlayer.EnumChatVisibility.HIDDEN;
+        mc.gameSettings.tutorialStep = net.minecraft.client.tutorial.TutorialSteps.NONE;
+        mc.getTutorial().setStep(net.minecraft.client.tutorial.TutorialSteps.NONE);
         int t = tick;
         at(t, () -> server(() -> {
             MinecraftServer s = Minecraft.getMinecraft().getIntegratedServer();
@@ -145,7 +150,7 @@ public final class AutoTest {
                 s.getCommandManager().executeCommand(s, c);
             }
             WorldServer w = sworld();
-            baseY = w.getHeight(new BlockPos(0, 0, 0)).getY();
+            baseY = 4;   // a default flat world: bedrock, dirt, dirt, grass, so you stand at y=4
             // a stone room: back wall, side walls, a ceiling over the arena, lit
             for (int x = -4; x <= 4; x++) {
                 for (int y = 0; y < 4; y++) {
