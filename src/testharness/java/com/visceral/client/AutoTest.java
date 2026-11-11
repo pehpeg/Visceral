@@ -216,7 +216,8 @@ public final class AutoTest {
         });
         at(t + 54, () -> shot("96_bloody_weapon"));
         at(t + 56, () -> Minecraft.getMinecraft().displayGuiScreen(new GuiVisceral(null)));
-        at(t + 60, () -> shot("97_settings"));
+        at(t + 58, () -> note("screen at 58: " + Minecraft.getMinecraft().currentScreen));
+        at(t + 60, () -> { note("screen at 60: " + Minecraft.getMinecraft().currentScreen); shot("97_settings"); });
         at(t + 62, () -> Minecraft.getMinecraft().displayGuiScreen(null));
         at(t + 64, () -> {
             Minecraft m = Minecraft.getMinecraft();
