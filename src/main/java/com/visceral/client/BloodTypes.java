@@ -341,6 +341,11 @@ public final class BloodTypes {
         return rl == null ? null : rl.toString().toLowerCase(Locale.ROOT);
     }
 
+    /** A blood type by its name (the built-in ones, and any in the json). */
+    static Type byName(String n) {
+        return t(n);
+    }
+
     private static Type t(String n) {
         Type t = TYPES.get(n);
         return t != null ? t : RED;

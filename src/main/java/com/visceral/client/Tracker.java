@@ -64,6 +64,10 @@ public final class Tracker {
         double dx, dy, dz;                 // which way it went (unit)
         double ex, ey, ez;                 // where it came out (projectiles)
         Attack melee;
+        Weapons.Kind weapon = Weapons.Kind.NONE;
+        boolean crit, sweep, headshot;
+        Boolean yours;                     // the server says you did it (or didn't); null: only the client's guess
+        boolean exact;                     // the server told us what happened
     }
 
     /** Projectiles seen lately: {x, y, z, motion x, y, z, tick}. */
@@ -89,6 +93,8 @@ public final class Tracker {
         float time;
         boolean hasPoint;
         double x, y, z;
+        Weapons.Kind weapon = Weapons.Kind.NONE;
+        boolean crit, sweep;
     }
 
     private static final Map<Integer, State> STATES = new HashMap<>();
@@ -115,8 +121,27 @@ public final class Tracker {
             a.hasPoint = true;
             a.x = ray.hitVec.x; a.y = ray.hitVec.y; a.z = ray.hitVec.z;
         }
+        a.weapon = Weapons.kind(p.getHeldItemMainhand());
+        // vanilla's own rules for a critical (falling, not on a ladder, in water, blind or riding) and a sweep
+        float cool = p.getCooledAttackStrength(0.5f);
+        a.crit = cool > 0.9f && p.fallDistance > 0f && !p.onGround && !p.isOnLadder() && !p.isInWater()
+                && !p.isPotionActive(MobEffects.BLINDNESS) && !p.isRiding() && !p.isSprinting();
         ATTACKS.put(event.getTarget().getEntityId(), a);
         YOUR_HITS.put(event.getTarget().getEntityId(), clock);
+        boolean sweeps = cool > 0.9f && !a.crit && p.onGround && !p.isSprinting()
+                && p.getHeldItemMainhand().getItem() instanceof net.minecraft.item.ItemSword;
+        if (sweeps) {
+            for (EntityLivingBase o : p.world.getEntitiesWithinAABB(EntityLivingBase.class,
+                    event.getTarget().getEntityBoundingBox().grow(1.0, 0.25, 1.0))) {
+                if (o == p || o == event.getTarget() || p.getDistanceSq(o) >= 9.0) continue;
+                Attack sw = new Attack();
+                sw.time = clock;
+                sw.weapon = a.weapon;
+                sw.sweep = true;
+                ATTACKS.put(o.getEntityId(), sw);
+                YOUR_HITS.put(o.getEntityId(), clock);
+            }
+        }
     }
 
     @SubscribeEvent
@@ -203,6 +228,7 @@ public final class Tracker {
     private static void watch(Minecraft mc, EntityLivingBase l, State s) {
         Type t = BloodTypes.of(l);
         boolean self = l == mc.player;
+        if (!self) drag(l, s, t);
         // a hit last tick: its health has caught up by now, so we know how hard it was
         if (s.pending && !s.dead && l.deathTime == 0 && l.getHealth() > 0f) {
             s.pending = false;
@@ -227,6 +253,20 @@ public final class Tracker {
             // a corpse hitting the ground
             if (l.deathTime == 12 && !t.none() && !Gibs.burst(l.getEntityId())) Sfx.body(t, l.posX, l.posY, l.posZ, l.width * l.height);
         }   // a corpse's fresh stump (a cut neck) keeps pumping as it falls
+    }
+
+    /** A bleeding creature or corpse knocked along the ground smears blood behind it. */
+    private static void drag(EntityLivingBase l, State s, Type t) {
+        if (!wet(t) || !l.onGround || l.isInWater() || (l.hurtTime == 0 && l.deathTime == 0)) return;
+        if (Gibs.burst(l.getEntityId())) return;
+        boolean bloody = l.deathTime > 0 || l.getHealth() < l.getMaxHealth() * 0.6f || Gibs.lost(l.getEntityId()) != null;
+        if (!bloody) return;
+        double mx = l.posX - l.lastTickPosX, mz = l.posZ - l.lastTickPosZ;
+        double sp = Math.sqrt(mx * mx + mz * mz);
+        if (sp < 0.12 || sp > 1.5) return;
+        float len = (float) Math.min(1.6, sp * 1.4 + 0.25);
+        float wid = MathHelper.clamp(l.width * 0.55f, 0.25f, 1.2f);
+        Blood.smear(t, l.posX - mx * 0.5, l.posY + 0.1, l.posZ - mz * 0.5, mx, mz, len, wid);
     }
 
     private static boolean wet(Type t) {
@@ -269,6 +309,94 @@ public final class Tracker {
      * wither). Anything else is "other", thrown the way the hit knocked it.
      */
     private static Hit cause(Minecraft mc, EntityLivingBase l, State s, float window) {
+        Hit h = guess(mc, l, s, window);
+        if (h.melee != null) {
+            h.weapon = h.melee.weapon;
+            h.crit = h.melee.crit;
+            h.sweep = h.melee.sweep;
+        }
+        if (h.cause == Cause.PROJECTILE) h.headshot = headshot(l, h.py);
+        Exact.Info x = Exact.get(l.getEntityId(), 1500);
+        if (x != null) refine(mc, l, h, x);
+        if (h.yours == Boolean.TRUE) YOUR_HITS.put(l.getEntityId(), clock);
+        return h;
+    }
+
+    /** A hit around the eyes, in the top part of the body. */
+    private static boolean headshot(EntityLivingBase l, double y) {
+        double eye = l.posY + l.getEyeHeight();
+        return y > l.posY + l.height * 0.6 && Math.abs(y - eye) < Math.max(0.3, l.height * 0.17);
+    }
+
+    /** The server (single player) says what really happened: that wins over the client's guess. */
+    private static void refine(Minecraft mc, EntityLivingBase l, Hit h, Exact.Info x) {
+        h.exact = true;
+        h.yours = x.by(mc.player.getUniqueID());
+        boolean hasFrom = !Double.isNaN(x.ax);
+        switch (x.kind) {
+            case EXPLOSION:
+                if (h.cause != Cause.EXPLOSION && hasFrom) {
+                    double dx = l.posX - x.ax, dy = l.posY + l.height * 0.5 - x.ay, dz = l.posZ - x.az;
+                    double m = Math.max(0.3, Math.sqrt(dx * dx + dy * dy + dz * dz));
+                    h.dx = dx / m; h.dy = Math.max(0.3, dy / m); h.dz = dz / m;
+                    side(l, h);
+                }
+                h.cause = Cause.EXPLOSION;
+                break;
+            case FIRE:
+                if (h.cause != Cause.FIRE) side(l, h);
+                h.cause = Cause.FIRE;
+                break;
+            case FALL:
+                h.cause = Cause.FALL;
+                h.px = l.posX; h.py = l.posY + 0.1; h.pz = l.posZ;
+                break;
+            case QUIET:
+                h.cause = Cause.QUIET;
+                break;
+            case PROJECTILE:
+                if (h.cause != Cause.PROJECTILE && x.hasPoint) {
+                    double m = Math.sqrt(x.mx * x.mx + x.my * x.my + x.mz * x.mz);
+                    if (m > 1e-3) {
+                        h.cause = Cause.PROJECTILE;
+                        h.px = x.px; h.py = x.py; h.pz = x.pz;
+                        h.dx = x.mx / m; h.dy = x.my / m; h.dz = x.mz / m;
+                        exit(l, h);
+                    }
+                }
+                h.headshot = x.headshot || h.headshot;
+                break;
+            case MELEE:
+                if (h.cause != Cause.MELEE) {
+                    h.cause = Cause.MELEE;
+                    if (hasFrom) {
+                        double dx = l.posX - x.ax, dz = l.posZ - x.az, m = Math.sqrt(dx * dx + dz * dz);
+                        if (m > 1e-3) { h.dx = dx / m; h.dz = dz / m; }
+                    }
+                    side(l, h);
+                }
+                if (x.weapon != Weapons.Kind.NONE || h.weapon == Weapons.Kind.NONE) h.weapon = x.weapon;
+                h.crit = x.crit;
+                h.sweep = x.sweep || h.sweep;
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Where a projectile on h's path comes out of l's far side. */
+    private static void exit(EntityLivingBase l, Hit h) {
+        AxisAlignedBB bb = l.getEntityBoundingBox().grow(0.35);
+        Vec3d in = new Vec3d(h.px, h.py, h.pz);
+        double far = l.width + l.height + 1;
+        Vec3d beyond = in.add(h.dx * far, h.dy * far, h.dz * far);
+        RayTraceResult out = bb.calculateIntercept(beyond, in);
+        Vec3d o = out != null ? out.hitVec : in;
+        h.ex = o.x; h.ey = o.y; h.ez = o.z;
+    }
+
+    /** The client's own guess at what hurt it. */
+    private static Hit guess(Minecraft mc, EntityLivingBase l, State s, float window) {
         Hit h = new Hit();
         Attack a = mine(l.getEntityId(), window);
         AxisAlignedBB bb = l.getEntityBoundingBox().grow(0.35);
@@ -389,6 +517,7 @@ public final class Tracker {
         double px = h.px, py = h.py, pz = h.pz;
         float amt = Blood.amount();
         int n = Math.round((8 + 22 * k) * amt);
+        if (h.crit) { k = Math.min(2.5f, k * 1.35f); n = Math.round(n * 1.6f); }
         switch (h.cause) {
             case QUIET:
                 return;   // drowning, poison, wither: no wound to bleed from
@@ -417,6 +546,21 @@ public final class Tracker {
                 }
                 break;
             default:
+                if (h.weapon == Weapons.Kind.BLUNT) {
+                    // crushed, not cut: short heavy spatter all round and a splat at its feet
+                    Blood.spray(t, px, py, pz, d[0], 0.5, d[1], Math.round(n * 0.8f), 1.8f + 1.5f * k, 0.95f);
+                    Blood.mist(t, px, py, pz, 0.8f + 0.5f * k);
+                    Blood.groundStain(t, l.posX, l.posY + 0.1, l.posZ, 0.4f + 0.3f * k, 0.12f, Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
+                    break;
+                }
+                if (h.weapon == Weapons.Kind.PIERCE) {
+                    // run through: most of it comes out the far side
+                    double far = l.width * 0.6;
+                    Blood.spray(t, px + d[0] * far, py, pz + d[1] * far, d[0], 0.2, d[1], n, 4f + 3f * k, 0.3f);
+                    Blood.spray(t, px, py, pz, -d[0], 0.4, -d[1], Math.max(2, n / 5), 1.2f, 0.5f);
+                    Blood.mist(t, px + d[0] * far, py, pz + d[1] * far, 0.6f + 0.4f * k);
+                    break;
+                }
                 // out the far side with the blow, and a little back toward the hit
                 Blood.spray(t, px, py, pz, d[0], 0.35, d[1], n, 2.5f + 2.5f * k, 0.55f);
                 Blood.spray(t, px, py, pz, -d[0], 0.6, -d[1], Math.round(n * 0.25f), 1.5f + k, 0.6f);
@@ -429,8 +573,17 @@ public final class Tracker {
 
         // a heavy enough hit can tear a limb off
         if (!VisceralConfig.gibs.limbLoss || !goreAllowed(l, self) || !BloodTypes.options(l).limbs) return;
-        if (dmg < VisceralConfig.gibs.limbLossDamage * l.getMaxHealth()) return;
-        if (Blood.RAND.nextDouble() >= VisceralConfig.gibs.limbLossChance) return;
+        // axes take limbs off more easily, blunt weapons crush them instead, spears rarely sever
+        double need = VisceralConfig.gibs.limbLossDamage, chance = VisceralConfig.gibs.limbLossChance;
+        switch (h.weapon) {
+            case BLUNT: return;
+            case CHOP: need *= 0.75; chance *= 1.6; break;
+            case PIERCE: chance *= 0.4; break;
+            default: break;
+        }
+        if (h.crit) chance *= 1.5;
+        if (dmg < need * l.getMaxHealth()) return;
+        if (Blood.RAND.nextDouble() >= chance) return;
         ModelParts.Capture cap = ModelParts.capture(l, 1f);
         if (cap == null) return;
         ModelParts.Group pick = null;
@@ -514,7 +667,7 @@ public final class Tracker {
         BloodTypes.Options opt = BloodTypes.options(l);
         boolean roll = (boom && opt.gibs > 0) || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance * opt.gibs;
         // a fire you started (Fire Aspect, a flame bow) that finishes it off a few seconds later is your kill too
-        boolean yours = !VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE
+        boolean yours = !VisceralConfig.gibs.onlyYourKills || (h.yours != null ? h.yours : a != null || h.cause == Cause.PROJECTILE)
                 || (fire && YOUR_HITS.containsKey(l.getEntityId()) && clock - YOUR_HITS.get(l.getEntityId()) <= 12f);
         boolean gib = VisceralConfig.gibs.deathGibs && goreAllowed(l, false) && roll && yours;
         if (!gib) {
@@ -525,26 +678,29 @@ public final class Tracker {
             if (fire) lastDeath += ", crumbling to ash";
         }
         if (gib) {
-            float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k)) * (boom ? 2.2f : fall ? 1.2f : 1f);
+            boolean blunt = h.weapon == Weapons.Kind.BLUNT && h.cause == Cause.MELEE;
+            float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k)) * (boom ? 2.2f : fall ? 1.2f : 1f)
+                    * (blunt ? 0.7f : 1f) * (h.crit ? 1.25f : 1f);
             ModelParts.Capture cap = ModelParts.capture(l, 1f);
             // not every death is a burst: some lose their head, some a limb, and fall
             int style = boom || fire || fall ? 0 : testStyle >= 0 ? testStyle : !VisceralConfig.gibs.deathStyles || !opt.styles ? 0
-                    : Blood.RAND.nextFloat() < 0.55f ? 0 : Blood.RAND.nextFloat() < 0.6f ? 1 : 2;
+                    : pickStyle(h);
             if (style > 0 && cap != null && partDeath(mc, l, s, t, cap, style, d, force, size)) {
-                lastDeath = name(l) + ": " + (style == 1 ? "decapitated" : "lost a limb and fell") + " [" + h.cause.name().toLowerCase() + "]";
+                lastDeath = name(l) + ": " + STYLE_NAMES[style] + tags(h);
                 return;
             }
-            float lift = boom ? 4f : fall ? -2f : 0f;
+            float lift = boom ? 4f : fall ? -2f : blunt ? -1.5f : 0f;
             boolean parts = Gibs.burst(l, cap, t, d[0], d[1], force, fire, lift);
             if (VisceralConfig.gibs.chunks || !parts) {
-                int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f) * (boom ? 1.6f : 1f) * (float) opt.chunks);
+                int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f) * (boom ? 1.6f : 1f)
+                        * (blunt ? 2f : 1f) * (float) opt.chunks);
                 if (!parts) n = Math.max(n, 10);
                 // a model we couldn't read: it bursts into chunks of its own colours
                 int own = parts ? -1 : ModelParts.averageColor(l);
                 Gibs.chunks(t, l.posX, l.posY + l.height * 0.2, l.posZ, l.width, l.height * 0.7f, n, d[0], d[1], force, fire, own);
             }
-            lastDeath = name(l) + ": " + (fire ? "burnt up" : boom ? "blown apart" : fall ? "splattered (fall)" : "burst")
-                    + (parts ? "" : " (model not readable: chunks)") + " [" + h.cause.name().toLowerCase() + "]";
+            lastDeath = name(l) + ": " + (fire ? "burnt up" : boom ? "blown apart" : fall ? "splattered (fall)" : blunt ? "crushed" : "burst")
+                    + (parts ? "" : " (model not readable: chunks)") + tags(h);
             if (fire) {
                 // burnt up: smoke and embers, no blood
                 for (int i = 0; i < 3; i++) Blood.mist(BloodTypes.ember(), cx, cy + (i - 1) * l.height * 0.25, cz, 1.2f);
@@ -586,23 +742,71 @@ public final class Tracker {
      * A death that isn't a burst: the head comes off (style 1) or a limb (style 2), the rest falls
      * like a normal death, soaked, the stump pumping, a pool spreading. False if it has no such part.
      */
+    private static final String[] STYLE_NAMES = {"burst", "decapitated", "lost a limb and fell", "head popped", "cut in half"};
+
+    /** How a kill goes, from what did it: headshots pop heads, sweeps cut in half, axes take heads, hammers crush. */
+    private static int pickStyle(Hit h) {
+        float r = Blood.RAND.nextFloat();
+        if (h.headshot) return 3;
+        if (h.sweep) return 4;
+        switch (h.weapon) {
+            case BLUNT: return r < 0.35f ? 3 : 0;
+            case CHOP: return h.crit && r < 0.35f ? 4 : r < 0.5f ? 1 : r < 0.65f ? 2 : 0;
+            case SHARP: if (h.crit && r < 0.4f) return 4; break;
+            default: break;
+        }
+        return r < 0.55f ? 0 : r < 0.82f ? 1 : 2;
+    }
+
+    /** For the F3 line: the cause, and what the server told us. */
+    private static String tags(Hit h) {
+        StringBuilder b = new StringBuilder(" [").append(h.cause.name().toLowerCase());
+        if (h.weapon != Weapons.Kind.NONE) b.append(", ").append(h.weapon.name().toLowerCase());
+        if (h.crit) b.append(", crit");
+        if (h.sweep) b.append(", sweep");
+        if (h.headshot) b.append(", headshot");
+        if (h.exact) b.append(h.yours == Boolean.TRUE ? ", yours" : ", not yours").append(", exact");
+        return b.append("]").toString();
+    }
+
     private static boolean partDeath(Minecraft mc, EntityLivingBase l, State s, Type t, ModelParts.Capture cap, int style,
                                      double[] d, float force, float size) {
         ModelParts.Group pick = null;
-        for (ModelParts.Group g : cap.groups) {
-            if (Gibs.isLost(l.getEntityId(), g)) continue;
-            if (style == 1 ? g.head : g.limb) {
-                if (pick == null || Blood.RAND.nextBoolean()) pick = g;
-            }
-        }
-        if (pick == null) return false;
-        Gibs.tearOff(l, cap, pick, t, d[0], d[1], force * (style == 1 ? 1.25f : 1f));
-        s.stump = pick;
-        s.spurtUntil = clock + (style == 1 ? 2.6f : 2f);
         float amt = Blood.amount();
-        Blood.spray(t, pick.wx, pick.wy, pick.wz, d[0], 1.2, d[1], Math.round((40 + 15 * size) * amt), 4.5f, 0.55f);
-        Blood.mist(t, pick.wx, pick.wy, pick.wz, 1.4f);
-        Sfx.tear(t, pick.wx, pick.wy, pick.wz);
+        if (style == 4) {
+            // cut in half: the top half flies, the legs stand a moment and fold
+            pick = Gibs.bisect(l, cap, t, d[0], d[1], force);
+            if (pick == null) return false;
+            Blood.spray(t, pick.wx, pick.wy, pick.wz, d[0], 0.9, d[1], Math.round((60 + 20 * size) * amt), 5f, 0.7f);
+            Blood.spray(t, pick.wx, pick.wy, pick.wz, -d[0], 0.6, -d[1], Math.round((25 + 10 * size) * amt), 3f, 0.8f);
+            Blood.mist(t, pick.wx, pick.wy, pick.wz, 1.7f);
+            Sfx.tear(t, pick.wx, pick.wy, pick.wz);
+            Sfx.burst(t, pick.wx, pick.wy, pick.wz);
+            s.stump = pick;
+            s.spurtUntil = clock + 2.4f;
+        } else {
+            for (ModelParts.Group g : cap.groups) {
+                if (Gibs.isLost(l.getEntityId(), g)) continue;
+                if (style == 2 ? g.limb : g.head) {
+                    if (pick == null || Blood.RAND.nextBoolean()) pick = g;
+                }
+            }
+            if (pick == null) return false;
+            if (style == 3) {
+                // the head bursts: bits of it and a fountain of blood, and the body drops
+                Gibs.popOff(l, cap, pick, t, d[0], d[1], force);
+                Blood.spray(t, pick.wx, pick.wy, pick.wz, d[0] * 0.4, 1.4, d[1] * 0.4, Math.round((55 + 15 * size) * amt), 5f, 0.9f);
+                Blood.mist(t, pick.wx, pick.wy, pick.wz, 1.6f);
+                Sfx.burst(t, pick.wx, pick.wy, pick.wz);
+            } else {
+                Gibs.tearOff(l, cap, pick, t, d[0], d[1], force * (style == 1 ? 1.25f : 1f));
+                Blood.spray(t, pick.wx, pick.wy, pick.wz, d[0], 1.2, d[1], Math.round((40 + 15 * size) * amt), 4.5f, 0.55f);
+                Blood.mist(t, pick.wx, pick.wy, pick.wz, 1.4f);
+                Sfx.tear(t, pick.wx, pick.wy, pick.wz);
+            }
+            s.stump = pick;
+            s.spurtUntil = clock + (style == 2 ? 2f : 2.6f);
+        }
         if (VisceralConfig.extras.bloodPools) {
             Blood.groundStain(t, l.posX, l.posY + 0.1, l.posZ, Math.min(3.5f, Math.max(1f, l.width * 2.1f)), 3.5f, Blood.T_POOL);
             if (wet(t) && Blood.RAND.nextBoolean()) Flies.swarm(l.posX, l.posY + 0.1, l.posZ, 50f, 18f);

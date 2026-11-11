@@ -171,8 +171,8 @@ public final class Gibs {
         return true;
     }
 
-    /** One part torn off a living creature: hidden on it from now on, and thrown. */
-    static void tearOff(EntityLivingBase e, ModelParts.Capture cap, ModelParts.Group g, Type t, double dx, double dz, float force) {
+    /** The part is gone from the creature from now on (not drawn, nor its armour or held item). */
+    private static void hide(EntityLivingBase e, ModelParts.Capture cap, ModelParts.Group g) {
         Lost lost = LOST.get(e.getEntityId());
         if (lost == null || lost.model != cap.model) {
             lost = new Lost();
@@ -187,6 +187,54 @@ public final class Gibs {
             lost.bipedSlots.add(slot);
             if (slot == 3 || slot == 4) lost.arm = true;
         }
+    }
+
+    /** A part blown to bits (a head caved in or shot through): gone from the creature, in chunks. */
+    static void popOff(EntityLivingBase e, ModelParts.Capture cap, ModelParts.Group g, Type t, double dx, double dz, float force) {
+        hide(e, cap, g);
+        float r = g.worldRadius();
+        int n = Math.max(5, Math.round(VisceralConfig.gibs.chunkCount * 1.2f * (0.6f + r * 2.5f)));
+        int own = ModelParts.averageColor(cap.tex);
+        chunks(t, g.wx, g.wy - r * 0.5, g.wz, r * 1.6f, r, n, dx, dz, force * 0.8f, false, own);
+    }
+
+    /**
+     * Cut in half: the lower half (legs, or the back half of a four-legged creature) stays on the
+     * creature, which falls as a corpse; everything else flies off. Returns the body part the cut
+     * went through (where it bleeds from), or null if this model can't be split that way.
+     */
+    static ModelParts.Group bisect(EntityLivingBase e, ModelParts.Capture cap, Type t, double dx, double dz, float force) {
+        ModelParts.Group core = null;
+        for (ModelParts.Group g : cap.groups) if (g.core && !isLost(e.getEntityId(), g)) core = g;
+        if (core == null) return null;
+        boolean upright = e.height > e.width * 1.25f;
+        List<ModelParts.Group> fly = new ArrayList<>();
+        int keep = 0;
+        for (ModelParts.Group g : cap.groups) {
+            if (isLost(e.getEntityId(), g)) continue;
+            // model space: y grows downward, z grows toward the back
+            boolean lower = g != core && (upright ? g.limb && g.my > core.my : (g.limb || !g.head) && g.mz > core.mz);
+            if (lower) keep++;
+            else fly.add(g);
+        }
+        if (keep == 0 || fly.isEmpty()) return null;
+        for (ModelParts.Group g : fly) {
+            hide(e, cap, g);
+            Gib gb = fromGroup(g, cap, t);
+            gb.whole = true;
+            // the top half goes with the blow, tumbling, a little up
+            gb.vx = (float) (dx * (2.5f + Blood.RAND.nextFloat()) * force);
+            gb.vy = (2f + Blood.RAND.nextFloat() * 2f) * force;
+            gb.vz = (float) (dz * (2.5f + Blood.RAND.nextFloat()) * force);
+            spin(gb, 5f * force);
+            add(gb);
+        }
+        return core;
+    }
+
+    /** One part torn off a living creature: hidden on it from now on, and thrown. */
+    static void tearOff(EntityLivingBase e, ModelParts.Capture cap, ModelParts.Group g, Type t, double dx, double dz, float force) {
+        hide(e, cap, g);
         Gib gb = fromGroup(g, cap, t);
         gb.whole = true;
         double ox = g.wx - e.posX, oz = g.wz - e.posZ;

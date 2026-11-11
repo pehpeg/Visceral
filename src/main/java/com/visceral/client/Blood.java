@@ -88,6 +88,7 @@ public final class Blood {
         BlockPos host;                 // the block it's on: if that goes (or changes shape), so does the stain
         float offset;                  // a hair off the face, a little more for each stain (no flicker)
         int atlas;                     // 0 gore.png, 1 prints.png (footprints)
+        boolean washing;               // out in the rain: it's being washed away
     }
 
     private static final List<Drop> DROPS = new ArrayList<>();
@@ -418,6 +419,29 @@ public final class Blood {
         }
     }
 
+    /**
+     * A smear on the ground at (x,y,z), `len` long along the way it was dragged (dx,dz) and `wid` wide:
+     * a bleeding body knocked or sliding along the floor.
+     */
+    public static void smear(Type t, double x, double y, double z, double dx, double dz, float len, float wid) {
+        if (!on() || !t.stains() || !VisceralConfig.blood.stains) return;
+        World w = Minecraft.getMinecraft().world;
+        if (w == null) return;
+        double top = ground(w, x, y, z);
+        if (Double.isNaN(top)) return;
+        BlockPos bp = new BlockPos(x, top - 0.01, z);
+        IBlockState st = w.getBlockState(bp);
+        AxisAlignedBB bb = st.getCollisionBoundingBox(w, bp);
+        if (bb == null) return;
+        bb = bb.offset(bp);
+        // the smear picture runs along v (z on the ground); turned a quarter for a drag along x
+        boolean alongX = Math.abs(dx) > Math.abs(dz);
+        int orient = (alongX ? 4 : 0) | RAND.nextInt(2);
+        Stain s = alongX ? addStain(t, EnumFacing.UP, bb, x, bb.maxY, z, len, wid, 0.3f, T_SMEAR, orient, bp.up(), bp)
+                : addStain(t, EnumFacing.UP, bb, x, bb.maxY, z, wid, len, 0.3f, T_SMEAR, orient, bp.up(), bp);
+        s.alpha *= 0.85f;
+    }
+
     /** The top of the ground under (x,y,z), searching a few blocks down; NaN if none (or water). */
     private static double ground(World w, double x, double y, double z) {
         BlockPos.MutableBlockPos bp = new BlockPos.MutableBlockPos();
@@ -507,7 +531,14 @@ public final class Blood {
         while (si.hasNext()) {
             Stain s = si.next();
             if (clock - s.born > s.life) { si.remove(); unindex(s); continue; }
-            if (relight) s.light = w.getCombinedLight(s.lightPos, 0);
+            if (relight) {
+                s.light = w.getCombinedLight(s.lightPos, 0);
+                // out in the rain (not snow, not under a roof): washed away within a few seconds
+                if (!s.washing && s.face != EnumFacing.DOWN && w.isRaining() && w.isRainingAt(s.lightPos)) {
+                    s.washing = true;
+                    s.life = Math.min(s.life, clock - s.born + 8f + RAND.nextFloat() * 8f);
+                }
+            }
             if (recheck && !onBlock(w, s)) { si.remove(); unindex(s); continue; }
             if (s.drips > 0 && clock >= s.nextDrip) {
                 s.drips--;

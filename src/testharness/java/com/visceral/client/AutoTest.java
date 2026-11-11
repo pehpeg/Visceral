@@ -327,10 +327,166 @@ public final class AutoTest {
         at(t + 89, () -> VisceralConfig.gibs.onlyYourKills = false);
         at(t + 90, () -> Minecraft.getMinecraft().player.inventory.currentItem = 0);
         t += 95;
+        t = round5(t);
         return t;
     }
 
+    private static void give(String id, net.minecraft.enchantment.Enchantment ench) {
+        server(() -> {
+            net.minecraft.item.Item item = net.minecraft.item.Item.getByNameOrId(id);
+            net.minecraft.item.ItemStack st = new net.minecraft.item.ItemStack(item);
+            if (ench != null) st.addEnchantment(ench, 1);
+            splayer().inventory.setInventorySlotContents(1, st);
+            splayer().inventory.currentItem = 1;
+        });
+    }
+
+    private static void health(float hp) {
+        server(() -> {
+            Entity e = sworld().getEntityByID(mobId);
+            if (e instanceof EntityLivingBase) ((EntityLivingBase) e).setHealth(hp);
+        });
+    }
+
+    private static void clearMob() {
+        server(() -> { Entity e = sworld().getEntityByID(mobId); if (e != null) e.setDead(); });
+    }
+
+    private static void report(String what) {
+        note(what + ": " + Tracker.lastDeath);
+    }
+
+    /** Weapons, crits, sweeps, headshots, pets, rain. */
+    private static int round5(int t) {
+        Tracker.testStyle = -1;
+        // a sweep: two zombies side by side, a sword swing at one; the sweep kills the other (cut in half)
+        at(t, () -> spawn("minecraft:zombie"));
+        at(t + 2, () -> server(() -> {
+            WorldServer w = sworld();
+            Entity e = EntityList.createEntityByIDFromName(new ResourceLocation("minecraft:zombie"), w);
+            e.setLocationAndAngles(1.5, baseY, 2.4, 180f, 0f);
+            ((EntityLiving) e).setNoAI(true);
+            ((EntityLivingBase) e).setHealth(1f);
+            w.spawnEntity(e);
+            side = e.getEntityId();
+        }));
+        at(t + 3, () -> give("minecraft:iron_sword", null));
+        at(t + 6, () -> Minecraft.getMinecraft().player.inventory.currentItem = 1);
+        at(t + 15, () -> health(20f));
+        at(t + 20, AutoTest::attack);
+        at(t + 24, () -> shot("60_sweep"));
+        at(t + 40, () -> shot("60_sweep_later"));
+        at(t + 45, () -> report("sweep"));
+        at(t + 48, () -> server(() -> {
+            Entity e = sworld().getEntityByID(side); if (e != null) e.setDead();
+        }));
+        at(t + 49, AutoTest::clearMob);
+        t += 55;
+        // a critical with an axe: jump, hit on the way down
+        at(t, () -> spawn("minecraft:pig"));
+        at(t + 3, () -> give("minecraft:iron_axe", null));
+        at(t + 6, () -> Minecraft.getMinecraft().player.inventory.currentItem = 1);
+        at(t + 15, () -> health(3f));
+        at(t + 20, () -> Minecraft.getMinecraft().player.jump());
+        at(t + 27, AutoTest::attack);
+        at(t + 30, () -> shot("61_axe_crit"));
+        at(t + 45, () -> shot("61_axe_crit_later"));
+        at(t + 50, () -> report("axe crit"));
+        at(t + 52, AutoTest::clearMob);
+        t += 58;
+        // a hammer (a pickaxe counts): crushed
+        at(t, () -> spawn("minecraft:villager"));
+        at(t + 3, () -> give("minecraft:iron_pickaxe", null));
+        at(t + 6, () -> Minecraft.getMinecraft().player.inventory.currentItem = 1);
+        at(t + 15, () -> health(2f));
+        at(t + 20, AutoTest::attack);
+        at(t + 23, () -> shot("62_blunt"));
+        at(t + 40, () -> shot("62_blunt_later"));
+        at(t + 45, () -> report("blunt"));
+        at(t + 47, AutoTest::clearMob);
+        t += 52;
+        // forced styles, to see them: a head popped, and cut in half, with an axe
+        for (int st : new int[]{3, 4}) {
+            final int style = st;
+            final String mob = st == 3 ? "minecraft:zombie" : "minecraft:cow";
+            at(t, () -> { spawn(mob); Tracker.testStyle = style; });
+            at(t + 15, () -> health(2f));
+            at(t + 20, AutoTest::attack);
+            at(t + 23, () -> shot("63_style" + style));
+            at(t + 40, () -> shot("63_style" + style + "_later"));
+            at(t + 45, () -> { report("style " + style); Tracker.testStyle = -1; });
+            at(t + 47, AutoTest::clearMob);
+            t += 52;
+        }
+        at(t, () -> server(() -> splayer().inventory.currentItem = 0));
+        at(t + 1, () -> Minecraft.getMinecraft().player.inventory.currentItem = 0);
+        // a headshot: an arrow of yours through a zombie's eyes
+        at(t + 2, () -> spawn("minecraft:zombie"));
+        at(t + 17, () -> health(2f));
+        at(t + 20, () -> server(() -> {
+            WorldServer w = sworld();
+            EntityLivingBase z = (EntityLivingBase) w.getEntityByID(mobId);
+            net.minecraft.entity.projectile.EntityTippedArrow arrow = new net.minecraft.entity.projectile.EntityTippedArrow(w, splayer());
+            arrow.setPosition(0.5, z.posY + z.getEyeHeight(), 0.6);
+            arrow.shoot(0, 0, 1, 2.6f, 0f);
+            arrow.setDamage(3.0);
+            w.spawnEntity(arrow);
+        }));
+        at(t + 24, () -> shot("64_headshot"));
+        at(t + 40, () -> shot("64_headshot_later"));
+        at(t + 45, () -> report("headshot"));
+        at(t + 47, AutoTest::clearMob);
+        t += 52;
+        // your wolf's kill counts as yours ("only your kills" on)
+        at(t, () -> { spawn("minecraft:pig"); VisceralConfig.gibs.onlyYourKills = true; });
+        at(t + 3, () -> server(() -> {
+            WorldServer w = sworld();
+            net.minecraft.entity.passive.EntityWolf wolf = new net.minecraft.entity.passive.EntityWolf(w);
+            wolf.setLocationAndAngles(0.5, baseY, 1.2, 0f, 0f);
+            wolf.setTamedBy(splayer());
+            w.spawnEntity(wolf);
+            side = wolf.getEntityId();
+        }));
+        at(t + 10, () -> health(1f));
+        at(t + 12, () -> server(() -> {
+            Entity wolf = sworld().getEntityByID(side), pig = sworld().getEntityByID(mobId);
+            if (wolf instanceof EntityLiving && pig instanceof EntityLivingBase) {
+                ((EntityLiving) wolf).setAttackTarget((EntityLivingBase) pig);
+                wolf.attackEntityAsMob(pig);
+            }
+        }));
+        at(t + 16, () -> shot("65_pet_kill"));
+        at(t + 40, () -> { report("pet"); VisceralConfig.gibs.onlyYourKills = false; });
+        at(t + 42, () -> server(() -> {
+            Entity e = sworld().getEntityByID(side); if (e != null) e.setDead();
+        }));
+        at(t + 43, AutoTest::clearMob);
+        t += 48;
+        // rain: blood out in the open washes away, blood under the roof stays
+        at(t, () -> server(() -> splayer().connection.setPlayerLocation(0.5, baseY, -1.6, 0f, 50f)));
+        at(t + 5, () -> {
+            Blood.clearAll();
+            BloodTypes.Type red = BloodTypes.byName("red");
+            Blood.groundStain(red, 0.5, baseY + 0.1, 0.5, 1.2f, 0.1f, Blood.T_POOL);    // open sky
+            Blood.groundStain(red, 0.5, baseY + 0.1, 1.9, 1.2f, 0.1f, Blood.T_POOL);    // under the roof
+        });
+        at(t + 15, () -> shot("66_rain_before"));
+        at(t + 16, () -> server(() -> {
+            MinecraftServer sv = Minecraft.getMinecraft().getIntegratedServer();
+            sv.getCommandManager().executeCommand(sv, "weather rain");
+        }));
+        at(t + 420, () -> { shot("66_rain_after"); note("rain: stains left " + Blood.stainCount()); });
+        at(t + 425, () -> server(() -> {
+            MinecraftServer sv = Minecraft.getMinecraft().getIntegratedServer();
+            sv.getCommandManager().executeCommand(sv, "weather clear");
+            splayer().connection.setPlayerLocation(0.5, baseY, -0.2, 0f, 8f);
+        }));
+        return t + 440;
+    }
+
     /** Hold (or let go of) the walk-forward key, so you walk for real. */
+    private static int side;
+
     private static void walk(boolean on) {
         Minecraft mc = Minecraft.getMinecraft();
         net.minecraft.client.settings.KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), on);
