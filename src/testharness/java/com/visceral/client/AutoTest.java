@@ -366,7 +366,7 @@ public final class AutoTest {
             Entity e = EntityList.createEntityByIDFromName(new ResourceLocation("minecraft:zombie"), w);
             e.setLocationAndAngles(1.5, baseY, 2.4, 180f, 0f);
             ((EntityLiving) e).setNoAI(true);
-            ((EntityLivingBase) e).setHealth(1f);
+            ((EntityLivingBase) e).setHealth(0.3f);   // a sweep does 1 damage, less after a zombie's armour
             w.spawnEntity(e);
             side = e.getEntityId();
         }));
@@ -469,12 +469,19 @@ public final class AutoTest {
             BloodTypes.Type red = BloodTypes.byName("red");
             Blood.groundStain(red, 0.5, baseY + 0.1, 0.5, 1.2f, 0.1f, Blood.T_POOL);    // open sky
             Blood.groundStain(red, 0.5, baseY + 0.1, 1.9, 1.2f, 0.1f, Blood.T_POOL);    // under the roof
+            note("rain: stains placed " + Blood.stainCount());
         });
         at(t + 15, () -> shot("66_rain_before"));
         at(t + 16, () -> server(() -> {
             MinecraftServer sv = Minecraft.getMinecraft().getIntegratedServer();
             sv.getCommandManager().executeCommand(sv, "weather rain");
         }));
+        at(t + 300, () -> {
+            World w = Minecraft.getMinecraft().world;
+            BlockPos open = new BlockPos(0.5, baseY, 0.5), roof = new BlockPos(0.5, baseY, 1.9);
+            note("rain at 300: raining " + w.isRaining() + ", open " + w.isRainingAt(open) + ", roofed " + w.isRainingAt(roof)
+                    + ", stains " + Blood.stainCount());
+        });
         at(t + 420, () -> { shot("66_rain_after"); note("rain: stains left " + Blood.stainCount()); });
         at(t + 425, () -> server(() -> {
             MinecraftServer sv = Minecraft.getMinecraft().getIntegratedServer();
