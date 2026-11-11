@@ -216,9 +216,7 @@ public final class AutoTest {
         });
         at(t + 54, () -> shot("96_bloody_weapon"));
         at(t + 56, () -> Minecraft.getMinecraft().displayGuiScreen(new GuiVisceral(null)));
-        at(t + 58, () -> note("screen at 58: " + Minecraft.getMinecraft().currentScreen));
-        at(t + 60, () -> { note("screen at 60: " + Minecraft.getMinecraft().currentScreen); shot("97_settings"); });
-        at(t + 62, () -> Minecraft.getMinecraft().displayGuiScreen(null));
+        at(t + 60, () -> shot("97_settings"));
         at(t + 64, () -> {
             Minecraft m = Minecraft.getMinecraft();
             m.gameSettings.showDebugInfo = true;
@@ -349,9 +347,24 @@ public final class AutoTest {
         });
     }
 
+    private static final java.util.List<String> SHOTS = new java.util.ArrayList<>();
+
+    /** Queues a screenshot: it's taken right after the next frame is drawn (GUI included), not of an older frame. */
     private static void shot(String name) {
+        SHOTS.add(name);
+    }
+
+    @SubscribeEvent
+    public static void onRenderTick(TickEvent.RenderTickEvent e) {
+        if (e.phase != TickEvent.Phase.END || SHOTS.isEmpty()) return;
         Minecraft mc = Minecraft.getMinecraft();
-        ScreenShotHelper.saveScreenshot(out, name + ".png", mc.displayWidth, mc.displayHeight, mc.getFramebuffer());
+        boolean close = false;
+        for (String name : SHOTS) {
+            ScreenShotHelper.saveScreenshot(out, name + ".png", mc.displayWidth, mc.displayHeight, mc.getFramebuffer());
+            if (name.equals("97_settings")) close = true;
+        }
+        if (close) mc.displayGuiScreen(null);
+        SHOTS.clear();
     }
 
     /** What Visceral makes of this creature: its blood and the body parts it found. */
