@@ -92,7 +92,7 @@ public final class AutoTest {
             if (!launched) {
                 if (mc.currentScreen instanceof GuiMainMenu) {
                     launched = true;
-                    out = new File(mc.mcDataDir, "visceral-test");
+                    out = new File(mc.gameDir, "visceral-test");
                     out.mkdirs();
                     mc.getSaveLoader().deleteWorldDirectory("visceraltest");
                     WorldSettings ws = new WorldSettings(1234L, GameType.CREATIVE, false, false, WorldType.FLAT);
@@ -282,7 +282,7 @@ public final class AutoTest {
 
     private static void finish(Minecraft mc) {
         STEPS.clear();
-        try (PrintWriter w = new PrintWriter(new File(out == null ? new File(mc.mcDataDir, "visceral-test") : out, "report.txt"), "UTF-8")) {
+        try (PrintWriter w = new PrintWriter(new File(out == null ? new File(mc.gameDir, "visceral-test") : out, "report.txt"), "UTF-8")) {
             for (String s : REPORT) w.println(s);
         } catch (Exception ex) {
             Visceral.LOG.error("[autotest] couldn't write the report", ex);
