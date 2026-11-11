@@ -288,7 +288,7 @@ public final class Tracker {
         if (!deathLooked) {
             deathLooked = true;
             try {
-                deathUpdate = net.minecraftforge.fml.common.ObfuscationReflectionHelper.findMethod(EntityLivingBase.class, "onDeathUpdate", "func_70609_aI");
+                deathUpdate = net.minecraftforge.fml.common.ObfuscationReflectionHelper.findMethod(EntityLivingBase.class, "func_70609_aI", void.class);
             } catch (RuntimeException ex) {
                 deathUpdate = null;
             }
