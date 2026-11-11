@@ -733,7 +733,7 @@ public final class Gibs {
                     // the torn end: raw flesh and bone where it came off
                     GlStateManager.color(1f, 1f, 1f, 1f);
                     if (close && stumpsOn() && g.type.stains() && !g.charred) {
-                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head);
+                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head, ModelParts.averageColor(g.tex));
                         mc.getTextureManager().bindTexture(g.tex);
                         bound = g.tex;
                     }
@@ -757,6 +757,7 @@ public final class Gibs {
                 if (!(ent instanceof EntityLivingBase) || BURST.contains(en.getKey())) continue;
                 EntityLivingBase e = (EntityLivingBase) ent;
                 if (!BloodTypes.of(e).stains()) continue;
+                int skin = ModelParts.averageColor(e);
                 for (float[] st : en.getValue().stumps) {
                     double[] p = joint(e, st[0], st[1], st[2], pt);
                     bp.setPos(p[0], p[1], p[2]);
@@ -769,7 +770,7 @@ public final class Gibs {
                         float f = Math.min(1f, (float) Math.sqrt(Math.max(0f, (e.deathTime + pt - 1f) / 20f * 1.6f)));
                         GlStateManager.rotate(f * 90f, 0f, 0f, 1f);
                     }
-                    cap(st[3], st[4], st[5] > 0.5f);
+                    cap(st[3], st[4], st[5] > 0.5f, skin);
                     GlStateManager.popMatrix();
                 }
             }
@@ -783,32 +784,62 @@ public final class Gibs {
         return VisceralConfig.enabled && VisceralConfig.extras.stumps && !VisceralConfig.extras.mild;
     }
 
-    /** The cut end of a limb: a thin slab of raw flesh with bone in the middle, w x d blocks, at the joint. */
-    private static void cap(float w, float d, boolean bone) {
-        float u0 = bone ? 0f : 0.5f, u1 = u0 + 0.5f;
+    /**
+     * The cut end of a limb: a thin slab of raw flesh with bone in the middle, w x d blocks, at the
+     * joint. The creature's skin shows round the edge of the cut and down the slab's sides, in its own
+     * colour (`skin`, the average of its texture; -1 if unknown): the skin is drawn first, tinted,
+     * then the meat over it.
+     */
+    private static void cap(float w, float d, boolean bone, int skin) {
         w = Math.max(0.08f, w);
         d = Math.max(0.08f, d);
         float hw = w * 0.5f, hd = d * 0.5f, h = Math.min(0.05f, Math.min(w, d) * 0.18f);
         Minecraft.getMinecraft().getTextureManager().bindTexture(FLESH);
         GlStateManager.enableTexture2D();
-        GlStateManager.color(1f, 1f, 1f, 1f);
+        GlStateManager.enableAlpha();
+        GlStateManager.alphaFunc(GL11.GL_GREATER, 0.5f);
+        float sr = 0.8f, sg = 0.66f, sb = 0.52f;
+        if (skin >= 0) {
+            // a touch brighter than the texture's average (that's pulled down by its dark details)
+            sr = Math.min(1f, ((skin >> 16) & 255) / 255f * 1.12f);
+            sg = Math.min(1f, ((skin >> 8) & 255) / 255f * 1.12f);
+            sb = Math.min(1f, (skin & 255) / 255f * 1.12f);
+        }
+        float u0 = bone ? 0f : 0.5f;
+        try {
+            GlStateManager.color(sr, sg, sb, 1f);
+            slab(hw, hd, h, u0, 0.5f, true);
+            GlStateManager.color(1f, 1f, 1f, 1f);
+            slab(hw, hd, h, u0, 0f, false);
+        } finally {
+            GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1f);
+            GlStateManager.color(1f, 1f, 1f, 1f);
+        }
+    }
+
+    /** One layer of the cap: both flat faces (texture row v0) and, for the skin layer, the four sides. */
+    private static void slab(float hw, float hd, float h, float u0, float v0, boolean sides) {
+        float u1 = u0 + 0.5f, v1 = v0 + 0.5f;
         Tessellator tess = Tessellator.getInstance();
         BufferBuilder b = tess.getBuffer();
         b.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_NORMAL);
-        // both flat faces show the cut (whichever way the part hangs); the edges show the fatty rim
-        b.pos(-hw, h, -hd).tex(u0, 0).normal(0, 1, 0).endVertex(); b.pos(-hw, h, hd).tex(u0, 1).normal(0, 1, 0).endVertex();
-        b.pos(hw, h, hd).tex(u1, 1).normal(0, 1, 0).endVertex(); b.pos(hw, h, -hd).tex(u1, 0).normal(0, 1, 0).endVertex();
-        b.pos(-hw, -h, -hd).tex(u0, 0).normal(0, -1, 0).endVertex(); b.pos(hw, -h, -hd).tex(u1, 0).normal(0, -1, 0).endVertex();
-        b.pos(hw, -h, hd).tex(u1, 1).normal(0, -1, 0).endVertex(); b.pos(-hw, -h, hd).tex(u0, 1).normal(0, -1, 0).endVertex();
-        float e0 = 0.02f, e1 = 0.12f;
-        b.pos(hw, -h, -hd).tex(u0 + e0 * 0.5f, 0).normal(1, 0, 0).endVertex(); b.pos(hw, h, -hd).tex(u0 + e1 * 0.5f, 0).normal(1, 0, 0).endVertex();
-        b.pos(hw, h, hd).tex(u0 + e1 * 0.5f, 1).normal(1, 0, 0).endVertex(); b.pos(hw, -h, hd).tex(u0 + e0 * 0.5f, 1).normal(1, 0, 0).endVertex();
-        b.pos(-hw, -h, -hd).tex(u0 + e0 * 0.5f, 0).normal(-1, 0, 0).endVertex(); b.pos(-hw, -h, hd).tex(u0 + e0 * 0.5f, 1).normal(-1, 0, 0).endVertex();
-        b.pos(-hw, h, hd).tex(u0 + e1 * 0.5f, 1).normal(-1, 0, 0).endVertex(); b.pos(-hw, h, -hd).tex(u0 + e1 * 0.5f, 0).normal(-1, 0, 0).endVertex();
-        b.pos(-hw, -h, hd).tex(u0, e0).normal(0, 0, 1).endVertex(); b.pos(hw, -h, hd).tex(u1, e0).normal(0, 0, 1).endVertex();
-        b.pos(hw, h, hd).tex(u1, e1).normal(0, 0, 1).endVertex(); b.pos(-hw, h, hd).tex(u0, e1).normal(0, 0, 1).endVertex();
-        b.pos(-hw, -h, -hd).tex(u0, e0).normal(0, 0, -1).endVertex(); b.pos(-hw, h, -hd).tex(u0, e1).normal(0, 0, -1).endVertex();
-        b.pos(hw, h, -hd).tex(u1, e1).normal(0, 0, -1).endVertex(); b.pos(hw, -h, -hd).tex(u1, e0).normal(0, 0, -1).endVertex();
+        // both flat faces show the cut, whichever way the part hangs
+        b.pos(-hw, h, -hd).tex(u0, v0).normal(0, 1, 0).endVertex(); b.pos(-hw, h, hd).tex(u0, v1).normal(0, 1, 0).endVertex();
+        b.pos(hw, h, hd).tex(u1, v1).normal(0, 1, 0).endVertex(); b.pos(hw, h, -hd).tex(u1, v0).normal(0, 1, 0).endVertex();
+        b.pos(-hw, -h, -hd).tex(u0, v0).normal(0, -1, 0).endVertex(); b.pos(hw, -h, -hd).tex(u1, v0).normal(0, -1, 0).endVertex();
+        b.pos(hw, -h, hd).tex(u1, v1).normal(0, -1, 0).endVertex(); b.pos(-hw, -h, hd).tex(u0, v1).normal(0, -1, 0).endVertex();
+        if (sides) {
+            // the sides: a strip of skin
+            float a = v0 + 0.02f, c = v0 + 0.1f, ua = u0 + 0.01f, uc = u0 + 0.05f;
+            b.pos(hw, -h, -hd).tex(ua, v0).normal(1, 0, 0).endVertex(); b.pos(hw, h, -hd).tex(uc, v0).normal(1, 0, 0).endVertex();
+            b.pos(hw, h, hd).tex(uc, v1).normal(1, 0, 0).endVertex(); b.pos(hw, -h, hd).tex(ua, v1).normal(1, 0, 0).endVertex();
+            b.pos(-hw, -h, -hd).tex(ua, v0).normal(-1, 0, 0).endVertex(); b.pos(-hw, -h, hd).tex(ua, v1).normal(-1, 0, 0).endVertex();
+            b.pos(-hw, h, hd).tex(uc, v1).normal(-1, 0, 0).endVertex(); b.pos(-hw, h, -hd).tex(uc, v0).normal(-1, 0, 0).endVertex();
+            b.pos(-hw, -h, hd).tex(u0, a).normal(0, 0, 1).endVertex(); b.pos(hw, -h, hd).tex(u1, a).normal(0, 0, 1).endVertex();
+            b.pos(hw, h, hd).tex(u1, c).normal(0, 0, 1).endVertex(); b.pos(-hw, h, hd).tex(u0, c).normal(0, 0, 1).endVertex();
+            b.pos(-hw, -h, -hd).tex(u0, a).normal(0, 0, -1).endVertex(); b.pos(-hw, h, -hd).tex(u0, c).normal(0, 0, -1).endVertex();
+            b.pos(hw, h, -hd).tex(u1, c).normal(0, 0, -1).endVertex(); b.pos(hw, -h, -hd).tex(u1, a).normal(0, 0, -1).endVertex();
+        }
         tess.draw();
     }
 

@@ -457,8 +457,16 @@ final class ModelParts {
         try {
             Render<?> r = Minecraft.getMinecraft().getRenderManager().getEntityRenderObject(e);
             if (r == null) return -1;
-            ResourceLocation tex = (ResourceLocation) getTex.invoke(r, e);
-            if (tex == null) return -1;
+            return averageColor((ResourceLocation) getTex.invoke(r, e));
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** The average colour of a texture's opaque pixels, -1 if unknown. Worked out once per texture. */
+    static int averageColor(ResourceLocation tex) {
+        if (tex == null) return -1;
+        try {
             Integer c = AVG.get(tex);
             if (c != null) return c;
             int out = -1;
