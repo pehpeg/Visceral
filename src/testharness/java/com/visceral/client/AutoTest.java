@@ -290,7 +290,34 @@ public final class AutoTest {
             p.connection.setPlayerLocation(p.posX, p.posY, p.posZ, 180f, 60f);
         }));
         at(t + 122, () -> shot("54_footprints"));
-        return t + 130;
+        t += 130;
+        // close up on cut ends: a zombie and a cow lose their heads, seen from just above (the skin
+        // round each cut should be the creature's own colour)
+        String[] cut = {"minecraft:zombie", "minecraft:cow", "minecraft:pig"};
+        for (int i = 0; i < cut.length; i++) {
+            final String id = cut[i], tag = "55_cut_" + id.substring(10);
+            at(t, () -> { spawn(id); Tracker.testStyle = 1; });
+            at(t + 15, () -> {
+                Minecraft mc = Minecraft.getMinecraft();
+                mc.player.capabilities.isFlying = true;
+                mc.player.sendPlayerAbilities();
+                server(() -> {
+                    EntityPlayerMP p = splayer();
+                    p.capabilities.isFlying = true;
+                    p.connection.setPlayerLocation(0.5, baseY + 0.9, 1.3, 0f, 50f);
+                });
+            });
+            at(t + 25, () -> hurt(100f));
+            at(t + 29, () -> shot(tag));
+            at(t + 50, () -> shot(tag + "_fallen"));
+            at(t + 55, () -> server(() -> {
+                Entity e = sworld().getEntityByID(mobId);
+                if (e != null) e.setDead();
+                splayer().capabilities.isFlying = false;
+            }));
+            t += 60;
+        }
+        return t;
     }
 
     /** Hold (or let go of) the walk-forward key, so you walk for real. */
