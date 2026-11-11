@@ -40,6 +40,12 @@ public final class Flies {
     private static World lastWorld;
     private static float clock, nextBuzz;
 
+    static int count() {
+        int n = 0;
+        for (Swarm s : SWARMS) if (clock >= s.born) n += s.n;
+        return n;
+    }
+
     /** Flies gather over (x,y,z) for `seconds`. */
     static void swarm(double x, double y, double z, float seconds) {
         swarm(x, y, z, seconds, 0f);
@@ -58,6 +64,10 @@ public final class Flies {
 
     @SubscribeEvent
     public static void onTick(TickEvent.ClientTickEvent event) {
+        Guard.run("Flies.onTick", () -> onTick0(event));
+    }
+
+    private static void onTick0(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world != lastWorld) { lastWorld = mc.world; SWARMS.clear(); }
@@ -82,6 +92,10 @@ public final class Flies {
 
     @SubscribeEvent
     public static void onRenderWorld(RenderWorldLastEvent event) {
+        Guard.run("Flies.onRenderWorld", () -> onRenderWorld0(event));
+    }
+
+    private static void onRenderWorld0(RenderWorldLastEvent event) {
         if (SWARMS.isEmpty()) return;
         Minecraft mc = Minecraft.getMinecraft();
         Entity cam = mc.getRenderViewEntity();

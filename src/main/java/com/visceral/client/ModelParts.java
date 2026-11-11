@@ -443,6 +443,45 @@ final class ModelParts {
         }
     }
 
+    // ------------------------------------------------------------------ a creature's colours
+
+    private static final Map<ResourceLocation, Integer> AVG = new java.util.HashMap<>();
+
+    /**
+     * The average colour of a creature's texture (its opaque pixels), for chunks of creatures whose
+     * model can't be read into parts: they burst into bits of their own colours. -1 if unknown.
+     */
+    static int averageColor(Entity e) {
+        lookup();
+        if (getTex == null) return -1;
+        try {
+            Render<?> r = Minecraft.getMinecraft().getRenderManager().getEntityRenderObject(e);
+            if (r == null) return -1;
+            ResourceLocation tex = (ResourceLocation) getTex.invoke(r, e);
+            if (tex == null) return -1;
+            Integer c = AVG.get(tex);
+            if (c != null) return c;
+            int out = -1;
+            try (java.io.InputStream in = Minecraft.getMinecraft().getResourceManager().getResource(tex).getInputStream()) {
+                java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(in);
+                long sr = 0, sg = 0, sb = 0, n = 0;
+                int step = Math.max(1, img.getWidth() / 64);
+                for (int y = 0; y < img.getHeight(); y += step) {
+                    for (int x = 0; x < img.getWidth(); x += step) {
+                        int p = img.getRGB(x, y);
+                        if ((p >>> 24) < 128) continue;
+                        sr += (p >> 16) & 255; sg += (p >> 8) & 255; sb += p & 255; n++;
+                    }
+                }
+                if (n > 0) out = (int) (sr / n) << 16 | (int) (sg / n) << 8 | (int) (sb / n);
+            }
+            AVG.put(tex, out);
+            return out;
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
     // ------------------------------------------------------------------ poses
 
     static void savePose(Map<ModelRenderer, float[]> into, ModelRenderer mr) {

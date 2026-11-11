@@ -473,6 +473,10 @@ public final class Blood {
 
     @SubscribeEvent
     public static void onTick(TickEvent.ClientTickEvent event) {
+        Guard.run("Blood.onTick", () -> onTick0(event));
+    }
+
+    private static void onTick0(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world != lastWorld) {
@@ -678,6 +682,10 @@ public final class Blood {
 
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onRenderWorld(RenderWorldLastEvent event) {
+        Guard.run("Blood.onRenderWorld", () -> onRenderWorld0(event));
+    }
+
+    private static void onRenderWorld0(RenderWorldLastEvent event) {
         if (DROPS.isEmpty() && STAINS.isEmpty()) return;
         GlGuard.push();
         GlGuard.worldLit();
@@ -732,6 +740,12 @@ public final class Blood {
         UP[1] = RIGHT[2] * fwd[0] - RIGHT[0] * fwd[2];
         UP[2] = RIGHT[0] * fwd[1] - RIGHT[1] * fwd[0];
         double eye = cam.getEyeHeight();
+        // only what's in view and near enough; the shine only up close
+        FRUSTUM.setPosition(cx, cy, cz);
+        double far = VisceralConfig.blood.renderDistance;
+        far2 = far * far;
+        gloss2 = Math.min(far2, 28 * 28);
+        camX = cx; camY = cy; camZ = cz;
 
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();
@@ -787,6 +801,17 @@ public final class Blood {
         GlStateManager.enableCull();
     }
 
+    private static final net.minecraft.client.renderer.culling.Frustum FRUSTUM = new net.minecraft.client.renderer.culling.Frustum();
+    private static double far2, gloss2, camX, camY, camZ;
+
+    private static boolean visible(double x0, double y0, double z0, double x1, double y1, double z1, double maxDist2) {
+        double mx = (x0 + x1) * 0.5 - camX, my = (y0 + y1) * 0.5 - camY, mz = (z0 + z1) * 0.5 - camZ;
+        if (mx * mx + my * my + mz * mz > maxDist2) return false;
+        return FRUSTUM.isBoxInFrustum(x0 - 0.05, y0 - 0.05, z0 - 0.05, x1 + 0.05, y1 + 0.05, z1 + 0.05);
+    }
+
+    static int stainCount() { return STAINS.size(); }
+
     private static float tu(int tile) { return (tile % 4) * 0.25f; }
     private static float tv(int tile) { return (tile / 4) * 0.25f; }
 
@@ -798,6 +823,16 @@ public final class Blood {
     private static void stain(BufferBuilder buf, Stain s, float now, double cx, double cy, double cz, boolean gloss) {
         float age = now - s.born;
         if (age < 0) return;
+        {
+            double p0 = s.plane;
+            boolean vis;
+            switch (s.face.getAxis()) {
+                case Y: vis = visible(s.u0, p0, s.v0, s.u1, p0, s.v1, gloss ? gloss2 : far2); break;
+                case Z: vis = visible(s.u0, s.v0, p0, s.u1, s.v1, p0, gloss ? gloss2 : far2); break;
+                default: vis = visible(p0, s.v0, s.u0, p0, s.v1, s.u1, gloss ? gloss2 : far2); break;
+            }
+            if (!vis) return;
+        }
         float a = s.alpha;
         float left = s.life - age;
         if (left < 6f) a *= Math.max(0f, left / 6f);   // the last seconds: fades
@@ -871,6 +906,8 @@ public final class Blood {
     private static void drop(BufferBuilder buf, Drop d, float pt, double cx, double cy, double cz, double eye, World w, boolean gloss) {
         float k = d.age / d.life;
         double x = d.px + (d.x - d.px) * pt, y = d.py + (d.y - d.py) * pt, z = d.pz + (d.z - d.pz) * pt;
+        double rr = Math.max(0.1, d.size * (d.puff ? 1 + d.grow : 1) * 0.6);
+        if (!visible(x - rr, y - rr, z - rr, x + rr, y + rr, z + rr, gloss ? gloss2 : far2)) return;
         float a = d.alpha;
         if (d.puff) a *= (1f - k) * (1f - k);
         else if (k > 0.75f) a *= (1f - k) / 0.25f;

@@ -52,7 +52,7 @@ public final class AutoTest {
             "minecraft:zombie", "minecraft:skeleton", "minecraft:creeper", "minecraft:spider", "minecraft:slime",
             "minecraft:pig", "minecraft:chicken", "minecraft:villager", "minecraft:villager_golem", "minecraft:blaze",
             "minecraft:enderman", "minecraft:wolf", "minecraft:sheep", "minecraft:cow", "minecraft:magma_cube",
-            "visceral:test_nested"};
+            "visceral:test_nested", "visceral:test_custom"};
 
     private static final class Step {
         final int at;
@@ -69,6 +69,7 @@ public final class AutoTest {
     public static void start() {
         MinecraftForge.EVENT_BUS.register(AutoTest.class);
         RenderingRegistry.registerEntityRenderingHandler(TestNested.class, m -> new RenderNested(m));
+        RenderingRegistry.registerEntityRenderingHandler(TestCustom.class, m -> new RenderCustom(m));
         Visceral.LOG.info("[autotest] armed");
     }
 
@@ -76,6 +77,9 @@ public final class AutoTest {
     public static void onRegisterEntities(RegistryEvent.Register<EntityEntry> e) {
         e.getRegistry().register(EntityEntryBuilder.create().entity(TestNested.class)
                 .id(new ResourceLocation(Visceral.MODID, "test_nested"), 900).name("visceral.test_nested")
+                .tracker(64, 3, true).build());
+        e.getRegistry().register(EntityEntryBuilder.create().entity(TestCustom.class)
+                .id(new ResourceLocation(Visceral.MODID, "test_custom"), 901).name("visceral.test_custom")
                 .tracker(64, 3, true).build());
     }
 
@@ -199,6 +203,12 @@ public final class AutoTest {
         at(t + 20, () -> shot("99_overview"));
         at(t + 25, () -> server(() -> splayer().connection.setPlayerLocation(-2.5, baseY + 1, -1.5, -30f, 25f)));
         at(t + 45, () -> shot("99_overview_side"));
+        at(t + 50, () -> {
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.gameSettings.hideGUI = false;
+            mc.gameSettings.showDebugInfo = true;
+        });
+        at(t + 55, () -> shot("98_f3"));
         at(t + 60, () -> finish(Minecraft.getMinecraft()));
     }
 
@@ -417,6 +427,40 @@ public final class AutoTest {
             armR.rotateAngleX = sw; armL.rotateAngleX = -sw;
             legR.rotateAngleX = -sw; legL.rotateAngleX = sw;
         }
+    }
+
+    /** A creature drawn by its own renderer, not from model parts (like GeckoLib or OBJ creatures). */
+    public static class TestCustom extends EntityZombie {
+        public TestCustom(World w) { super(w); }
+    }
+
+    static final class RenderCustom extends net.minecraft.client.renderer.entity.Render<TestCustom> {
+        private static final ResourceLocation TEX = new ResourceLocation("textures/entity/creeper/creeper.png");
+
+        RenderCustom(RenderManager m) { super(m); }
+
+        @Override
+        public void doRender(TestCustom e, double x, double y, double z, float yaw, float pt) {
+            // a plain green block where the creature is, drawn by hand
+            net.minecraft.client.renderer.GlStateManager.pushMatrix();
+            net.minecraft.client.renderer.GlStateManager.translate(x, y + 0.9, z);
+            net.minecraft.client.renderer.GlStateManager.disableTexture2D();
+            net.minecraft.client.renderer.GlStateManager.color(0.3f, 0.75f, 0.3f, 1f);
+            net.minecraft.client.renderer.Tessellator t = net.minecraft.client.renderer.Tessellator.getInstance();
+            net.minecraft.client.renderer.BufferBuilder b = t.getBuffer();
+            b.begin(7, net.minecraft.client.renderer.vertex.DefaultVertexFormats.POSITION);
+            float h = 0.4f;
+            float[][] f = {{-h,-h,-h},{h,-h,-h},{h,h,-h},{-h,h,-h},{-h,-h,h},{-h,h,h},{h,h,h},{h,-h,h},{-h,-h,-h},{-h,h,-h},{-h,h,h},{-h,-h,h},
+                    {h,-h,-h},{h,-h,h},{h,h,h},{h,h,-h},{-h,h,-h},{h,h,-h},{h,h,h},{-h,h,h},{-h,-h,-h},{-h,-h,h},{h,-h,h},{h,-h,-h}};
+            for (float[] v : f) b.pos(v[0], v[1] * 2.2f, v[2]).endVertex();
+            t.draw();
+            net.minecraft.client.renderer.GlStateManager.color(1f, 1f, 1f, 1f);
+            net.minecraft.client.renderer.GlStateManager.enableTexture2D();
+            net.minecraft.client.renderer.GlStateManager.popMatrix();
+        }
+
+        @Override
+        protected ResourceLocation getEntityTexture(TestCustom e) { return TEX; }
     }
 
     static final class RenderNested extends RenderLiving<TestNested> {

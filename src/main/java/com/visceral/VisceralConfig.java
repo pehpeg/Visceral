@@ -16,6 +16,45 @@ public class VisceralConfig {
     @Config.Comment("Master switch. Off: no gore at all, every creature looks and dies like vanilla.")
     public static boolean enabled = true;
 
+    @Config.Comment({"A quick setting for how much gore (and how much it costs your frame rate):",
+            "LOW for big modpacks or weaker PCs, MEDIUM, HIGH (the default amounts), INSANE for screenshots.",
+            "CUSTOM: use the detailed settings below as you set them."})
+    public static Preset preset = Preset.CUSTOM;
+
+    public enum Preset { CUSTOM, LOW, MEDIUM, HIGH, INSANE }
+
+    private static Preset applied;
+
+    /** Puts the preset's amounts into the detailed settings (when it's not CUSTOM and has changed). */
+    public static void applyPreset() {
+        if (preset == applied) return;
+        applied = preset;
+        switch (preset) {
+            case LOW:
+                blood.amount = 0.5; blood.maxDroplets = 400; blood.maxStains = 300; blood.stainSeconds = 45; blood.renderDistance = 32;
+                gibs.maxGibs = 80; gibs.chunkCount = 4; gibs.gibSeconds = 12;
+                extras.flies = false; extras.footprints = false;
+                break;
+            case MEDIUM:
+                blood.amount = 0.8; blood.maxDroplets = 800; blood.maxStains = 600; blood.stainSeconds = 70; blood.renderDistance = 40;
+                gibs.maxGibs = 160; gibs.chunkCount = 7; gibs.gibSeconds = 20;
+                extras.flies = true; extras.footprints = true;
+                break;
+            case HIGH:
+                blood.amount = 1.0; blood.maxDroplets = 1200; blood.maxStains = 900; blood.stainSeconds = 90; blood.renderDistance = 48;
+                gibs.maxGibs = 300; gibs.chunkCount = 10; gibs.gibSeconds = 25;
+                extras.flies = true; extras.footprints = true;
+                break;
+            case INSANE:
+                blood.amount = 2.2; blood.maxDroplets = 3500; blood.maxStains = 2800; blood.stainSeconds = 300; blood.renderDistance = 64;
+                gibs.maxGibs = 700; gibs.chunkCount = 22; gibs.gibSeconds = 90;
+                extras.flies = true; extras.footprints = true;
+                break;
+            default:
+                break;
+        }
+    }
+
     @Config.Comment("Blood: sprays, droplets and the stains they leave.")
     public static final Blood blood = new Blood();
 
@@ -47,6 +86,10 @@ public class VisceralConfig {
         @Config.Comment("Most droplets in the air at once.")
         @Config.RangeInt(min = 50, max = 5000)
         public int maxDroplets = 1200;
+
+        @Config.Comment("Blood further away than this many blocks isn't drawn (performance).")
+        @Config.RangeInt(min = 16, max = 128)
+        public int renderDistance = 48;
 
         @Config.Comment("Only creatures within this many blocks of you bleed (performance).")
         @Config.RangeInt(min = 8, max = 128)
@@ -149,6 +192,7 @@ public class VisceralConfig {
         public static void onConfigChanged(ConfigChangedEvent.OnConfigChangedEvent event) {
             if (event.getModID().equals(Visceral.MODID)) {
                 ConfigManager.sync(Visceral.MODID, Config.Type.INSTANCE);
+                applyPreset();
             }
         }
     }

@@ -214,6 +214,11 @@ public final class Gibs {
     }
 
     static void chunks(Type t, double x, double y, double z, float w, float h, int n, double dx, double dz, float force, boolean charred) {
+        chunks(t, x, y, z, w, h, n, dx, dz, force, charred, -1);
+    }
+
+    /** As chunks(), coloured `color` (e.g. the creature's own colours) instead of the blood type's chunk colour, if not -1. */
+    static void chunks(Type t, double x, double y, double z, float w, float h, int n, double dx, double dz, float force, boolean charred, int color) {
         if (t.none()) return;
         for (int k = 0; k < n; k++) {
             Gib gb = new Gib();
@@ -223,7 +228,8 @@ public final class Gibs {
             gb.z = gb.pz = z + (Blood.RAND.nextDouble() - 0.5) * w;
             gb.chunk = (0.06f + Blood.RAND.nextFloat() * 0.1f) * (t.style == Style.SLIME ? 1.6f : 1f);
             gb.r = gb.chunk * 0.5f;
-            gb.color = charred ? Blood.vary(0x2A1E18, 0.25f) : Blood.vary(t.chunkColor, 0.18f);
+            int base = color >= 0 ? (Blood.RAND.nextInt(3) == 0 ? t.chunkColor : color) : t.chunkColor;
+            gb.color = charred ? Blood.vary(0x2A1E18, 0.25f) : Blood.vary(base, 0.18f);
             gb.charred = charred;
             gb.lin[0] = gb.lin[4] = gb.lin[8] = 1f;
             randomTurn(gb);
@@ -310,6 +316,10 @@ public final class Gibs {
 
     @SubscribeEvent
     public static void onTick(TickEvent.ClientTickEvent event) {
+        Guard.run("Gibs.onTick", () -> onTick0(event));
+    }
+
+    private static void onTick0(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world != lastWorld) {
@@ -490,6 +500,10 @@ public final class Gibs {
     /** A burst creature's body isn't drawn any more (its parts are flying around instead). */
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderCorpse(RenderLivingEvent.Pre<EntityLivingBase> event) {
+        Guard.run("Gibs.onRenderCorpse", () -> onRenderCorpse0(event));
+    }
+
+    private static void onRenderCorpse0(RenderLivingEvent.Pre<EntityLivingBase> event) {
         if (BURST.contains(event.getEntity().getEntityId())) event.setCanceled(true);
     }
 
@@ -502,6 +516,10 @@ public final class Gibs {
     /** Lost parts are hidden while the creature is drawn (and put back right after, for the others like it). */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onRenderPre(RenderLivingEvent.Pre<EntityLivingBase> event) {
+        Guard.run("Gibs.onRenderPre", () -> onRenderPre0(event));
+    }
+
+    private static void onRenderPre0(RenderLivingEvent.Pre<EntityLivingBase> event) {
         if (LOST.isEmpty()) return;
         Lost l = LOST.get(event.getEntity().getEntityId());
         if (l == null) return;
@@ -560,11 +578,19 @@ public final class Gibs {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onRenderPost(RenderLivingEvent.Post<EntityLivingBase> event) {
+        Guard.run("Gibs.onRenderPost", () -> onRenderPost0(event));
+    }
+
+    private static void onRenderPost0(RenderLivingEvent.Post<EntityLivingBase> event) {
         if (!HIDDEN.isEmpty() || !REMOVED.isEmpty()) restore();
     }
 
     @SubscribeEvent
     public static void onRenderTick(TickEvent.RenderTickEvent event) {
+        Guard.run("Gibs.onRenderTick", () -> onRenderTick0(event));
+    }
+
+    private static void onRenderTick0(TickEvent.RenderTickEvent event) {
         if (!HIDDEN.isEmpty() || !REMOVED.isEmpty()) restore();   // in case another mod skipped a Post
     }
 
@@ -616,6 +642,10 @@ public final class Gibs {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderWorld(RenderWorldLastEvent event) {
+        Guard.run("Gibs.onRenderWorld", () -> onRenderWorld0(event));
+    }
+
+    private static void onRenderWorld0(RenderWorldLastEvent event) {
         if (!HIDDEN.isEmpty() || !REMOVED.isEmpty()) restore();
         if (GIBS.isEmpty() && (LOST.isEmpty() || !stumpsOn())) return;
         float bx = OpenGlHelper.lastBrightnessX, by = OpenGlHelper.lastBrightnessY;
@@ -654,8 +684,15 @@ public final class Gibs {
         BlockPos.MutableBlockPos bp = new BlockPos.MutableBlockPos();
         float now;
         ResourceLocation bound = null;
+        FRUSTUM.setPosition(cx, cy, cz);
+        double far = Math.max(32, VisceralConfig.blood.renderDistance + 16);
         for (Gib g : GIBS) {
             double x = g.px + (g.x - g.px) * pt, y = g.py + (g.y - g.py) * pt, z = g.pz + (g.z - g.pz) * pt;
+            double dx = x - cx, dy = y - cy, dz = z - cz, d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 > far * far) continue;
+            double rr = Math.max(0.3, g.r * 3 + g.chunk);
+            if (!FRUSTUM.isBoxInFrustum(x - rr, y - rr, z - rr, x + rr, y + rr, z + rr)) continue;
+            boolean close = d2 < 26 * 26;
             bp.setPos(x, y + 0.1, z);
             int light = w.getCombinedLight(bp, 0);
             OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light % 65536, light / 65536);
@@ -683,14 +720,14 @@ public final class Gibs {
                 GlStateManager.enableTexture2D();
                 GlStateManager.color(1f, 1f, 1f, 1f);
                 if (g.charred) GlStateManager.color(0.3f, 0.25f, 0.22f, 1f);
-                boolean bloody = !g.charred && Wounds.on() && !g.type.glows() && !g.type.none()
+                boolean bloody = close && !g.charred && Wounds.on() && !g.type.glows() && !g.type.none()
                         && Wounds.begin(g.type.color, 4, System.identityHashCode(g));
                 try {
                     ModelParts.drawGroup(g.group, g.whole);
                     if (bloody) { Wounds.end(); bloody = false; }
                     // the torn end: raw flesh and bone where it came off
                     GlStateManager.color(1f, 1f, 1f, 1f);
-                    if (stumpsOn() && g.type.stains() && !g.charred) {
+                    if (close && stumpsOn() && g.type.stains() && !g.charred) {
                         cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head);
                         mc.getTextureManager().bindTexture(g.tex);
                         bound = g.tex;
@@ -735,6 +772,7 @@ public final class Gibs {
     }
 
     private static final ResourceLocation FLESH = new ResourceLocation(Visceral.MODID, "textures/fx/flesh.png");
+    private static final net.minecraft.client.renderer.culling.Frustum FRUSTUM = new net.minecraft.client.renderer.culling.Frustum();
 
     static boolean stumpsOn() {
         return VisceralConfig.enabled && VisceralConfig.extras.stumps;

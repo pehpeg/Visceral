@@ -33,6 +33,7 @@ public class Visceral {
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
         BloodTypes.init(new File(event.getModConfigurationDirectory(), "visceral-blood.json"));
+        VisceralConfig.applyPreset();
         // F3+T reloads the blood list, and Visceral's textures come back with the rest
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener((IResourceManagerReloadListener) rm -> { BloodTypes.reload(); com.visceral.client.Wounds.reload(); });

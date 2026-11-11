@@ -73,6 +73,10 @@ public final class Tracker {
     /** An explosion's sound is the client's only sign of one: note where and when. */
     @SubscribeEvent
     public static void onSound(net.minecraftforge.client.event.sound.PlaySoundEvent event) {
+        Guard.run("Tracker.onSound", () -> onSound0(event));
+    }
+
+    private static void onSound0(net.minecraftforge.client.event.sound.PlaySoundEvent event) {
         net.minecraft.client.audio.ISound snd = event.getSound();
         if (snd == null || snd.getSoundLocation() == null) return;
         if (!"entity.generic.explode".equals(snd.getSoundLocation().getPath())) return;
@@ -94,6 +98,10 @@ public final class Tracker {
 
     @SubscribeEvent
     public static void onAttack(AttackEntityEvent event) {
+        Guard.run("Tracker.onAttack", () -> onAttack0(event));
+    }
+
+    private static void onAttack0(AttackEntityEvent event) {
         EntityPlayer p = event.getEntityPlayer();
         Minecraft mc = Minecraft.getMinecraft();
         if (p == null || !p.world.isRemote || p != mc.player) return;
@@ -109,6 +117,10 @@ public final class Tracker {
 
     @SubscribeEvent
     public static void onTick(TickEvent.ClientTickEvent event) {
+        Guard.run("Tracker.onTick", () -> onTick0(event));
+    }
+
+    private static void onTick0(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world != lastWorld) {
@@ -153,6 +165,10 @@ public final class Tracker {
             }
             s.prevY = l.posY;
             boolean near = on && l.getDistanceSq(mc.player) <= range * range;
+            if (on && !near && !s.dead && l.deathTime > 0) {
+                s.dead = true;
+                lastDeath = name(l) + ": too far away (range " + (int) range + ")";
+            }
             if (near) {
                 try {
                     if (!s.dead) feet(mc, l, s);
@@ -335,7 +351,7 @@ public final class Tracker {
         if (l == mc.player && wet != null) Sfx.step(l.posX, l.posY, l.posZ);
         if (s.bloodySteps <= 0 || s.feetType == null) return;
         float yaw = l instanceof EntityPlayer ? l.rotationYaw : l.renderYawOffset;
-        float size = biped ? 0.44f * Math.max(0.7f, l.height / 1.8f) : 0.32f * Math.max(0.6f, l.width / 0.9f);
+        float size = biped ? 0.62f * Math.max(0.7f, l.height / 1.8f) : 0.42f * Math.max(0.6f, l.width / 0.9f);
         Blood.print(s.feetType, s.feetColor, l.posX, l.posY, l.posZ, yaw, s.leftFoot, !biped, size, Math.min(1f, s.bloodySteps / 9f));
         s.bloodySteps--;
     }
@@ -426,6 +442,27 @@ public final class Tracker {
 
     // ------------------------------------------------------------------ deaths
 
+    /** What happened at the last death near you, and why (shown on the F3 screen). */
+    static String lastDeath = "none yet";
+
+    private static String name(EntityLivingBase l) {
+        net.minecraft.util.ResourceLocation rl = net.minecraft.entity.EntityList.getKey(l);
+        return (l instanceof EntityPlayer ? "player" : rl == null ? l.getClass().getSimpleName() : rl.toString())
+                + " (blood " + BloodTypes.of(l).name + ")";
+    }
+
+    /** Visceral's lines on the F3 screen: how much gore there is, and what the last death did and why. */
+    @SubscribeEvent
+    public static void onDebugText(net.minecraftforge.client.event.RenderGameOverlayEvent.Text event) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (!mc.gameSettings.showDebugInfo) return;
+        event.getLeft().add("");
+        event.getLeft().add("Visceral " + Visceral.VERSION + (VisceralConfig.enabled ? "" : " (off)") + ": droplets " + Blood.dropCount()
+                + ", stains " + Blood.stainCount() + ", gibs " + Gibs.count() + ", flies " + Flies.count()
+                + (Guard.off() > 0 ? ", " + Guard.off() + " part(s) switched off after errors" : ""));
+        event.getLeft().add("Visceral last death: " + lastDeath);
+    }
+
     /** For the in-game test: forces the next deaths' style (0 burst, 1 decapitation, 2 limb and corpse), -1 = random. */
     static int testStyle = -1;
 
@@ -442,27 +479,41 @@ public final class Tracker {
         double cx = l.posX, cy = l.posY + l.height * 0.5, cz = l.posZ;
         boolean fire = h.cause == Cause.FIRE, boom = h.cause == Cause.EXPLOSION, fall = h.cause == Cause.FALL;
         if (h.cause == Cause.QUIET) {
+            lastDeath = name(l) + ": died quietly (drowned, poison or wither)";
             // drowned, poisoned, withered: it just dies
             if (VisceralConfig.extras.bloodPools && wet(t) && !l.isInWater()) Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.max(0.6f, l.width * 1.2f), 4f, Blood.T_POOL);
             return;
         }
-        boolean gib = VisceralConfig.gibs.deathGibs && goreAllowed(l, false)
-                && (boom || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance)
-                && (!VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE);
+        boolean roll = boom || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance;
+        boolean yours = !VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE;
+        boolean gib = VisceralConfig.gibs.deathGibs && goreAllowed(l, false) && roll && yours;
+        if (!gib) {
+            String why = !VisceralConfig.gibs.deathGibs ? "death gibs are off" : !l.isNonBoss() ? "it's a boss"
+                    : l instanceof EntityPlayer && !VisceralConfig.gibs.players ? "players don't gib (setting)"
+                    : !yours ? "not your kill (onlyYourKills)" : !roll ? "gibChance roll" : "?";
+            lastDeath = name(l) + ": died normally (" + why + ") [" + h.cause.name().toLowerCase() + "]";
+        }
         if (gib) {
             float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k)) * (boom ? 2.2f : fall ? 1.2f : 1f);
             ModelParts.Capture cap = ModelParts.capture(l, 1f);
             // not every death is a burst: some lose their head, some a limb, and fall
             int style = boom || fire || fall ? 0 : testStyle >= 0 ? testStyle : !VisceralConfig.gibs.deathStyles ? 0
                     : Blood.RAND.nextFloat() < 0.55f ? 0 : Blood.RAND.nextFloat() < 0.6f ? 1 : 2;
-            if (style > 0 && cap != null && partDeath(mc, l, s, t, cap, style, d, force, size)) return;
+            if (style > 0 && cap != null && partDeath(mc, l, s, t, cap, style, d, force, size)) {
+                lastDeath = name(l) + ": " + (style == 1 ? "decapitated" : "lost a limb and fell") + " [" + h.cause.name().toLowerCase() + "]";
+                return;
+            }
             float lift = boom ? 4f : fall ? -2f : 0f;
             boolean parts = Gibs.burst(l, cap, t, d[0], d[1], force, fire, lift);
             if (VisceralConfig.gibs.chunks || !parts) {
                 int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f) * (boom ? 1.6f : 1f));
-                if (!parts) n = Math.max(n, 8);
-                Gibs.chunks(t, l.posX, l.posY + l.height * 0.2, l.posZ, l.width, l.height * 0.7f, n, d[0], d[1], force, fire);
+                if (!parts) n = Math.max(n, 10);
+                // a model we couldn't read: it bursts into chunks of its own colours
+                int own = parts ? -1 : ModelParts.averageColor(l);
+                Gibs.chunks(t, l.posX, l.posY + l.height * 0.2, l.posZ, l.width, l.height * 0.7f, n, d[0], d[1], force, fire, own);
             }
+            lastDeath = name(l) + ": " + (fire ? "burnt up" : boom ? "blown apart" : fall ? "splattered (fall)" : "burst")
+                    + (parts ? "" : " (model not readable: chunks)") + " [" + h.cause.name().toLowerCase() + "]";
             if (fire) {
                 // burnt up: smoke and embers, no blood
                 for (int i = 0; i < 3; i++) Blood.mist(BloodTypes.ember(), cx, cy + (i - 1) * l.height * 0.25, cz, 1.2f);

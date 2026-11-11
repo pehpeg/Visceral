@@ -77,6 +77,10 @@ public final class Wounds {
 
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onRenderPre(RenderLivingEvent.Pre<EntityLivingBase> event) {
+        Guard.run("Wounds.onRenderPre", () -> onRenderPre0(event));
+    }
+
+    private static void onRenderPre0(RenderLivingEvent.Pre<EntityLivingBase> event) {
         if (active > 0) end();   // a creature before this one never finished (another mod skipped its Post)
         if (!on()) return;
         EntityLivingBase e = event.getEntity();
@@ -89,11 +93,19 @@ public final class Wounds {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderPost(RenderLivingEvent.Post<EntityLivingBase> event) {
+        Guard.run("Wounds.onRenderPost", () -> onRenderPost0(event));
+    }
+
+    private static void onRenderPost0(RenderLivingEvent.Post<EntityLivingBase> event) {
         if (active > 0) end();
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderWorld(RenderWorldLastEvent event) {
+        Guard.run("Wounds.onRenderWorld", () -> onRenderWorld0(event));
+    }
+
+    private static void onRenderWorld0(RenderWorldLastEvent event) {
         if (active > 0) end();
     }
 

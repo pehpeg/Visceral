@@ -116,6 +116,10 @@ public final class ScreenBlood {
 
     @SubscribeEvent
     public static void onTick(TickEvent.ClientTickEvent event) {
+        Guard.run("ScreenBlood.onTick", () -> onTick0(event));
+    }
+
+    private static void onTick0(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.isGamePaused()) return;
@@ -126,6 +130,10 @@ public final class ScreenBlood {
 
     @SubscribeEvent
     public static void onOverlay(RenderGameOverlayEvent.Pre event) {
+        Guard.run("ScreenBlood.onOverlay", () -> onOverlay0(event));
+    }
+
+    private static void onOverlay0(RenderGameOverlayEvent.Pre event) {
         if (event.getType() != RenderGameOverlayEvent.ElementType.ALL || SPLATS.isEmpty()) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.gameSettings.thirdPersonView != 0) return;
