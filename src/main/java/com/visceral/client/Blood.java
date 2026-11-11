@@ -279,20 +279,53 @@ public final class Blood {
         if (!on() || !t.stains() || !VisceralConfig.blood.stains) return;
         World w = Minecraft.getMinecraft().world;
         if (w == null) return;
+        double top = ground(w, x, y, z);
+        if (Double.isNaN(top)) return;
+        // one stain, laid over every block it covers (each piece cut to its own block, the picture
+        // continuing from one to the next), so a pool spreads across the floor instead of stopping
+        // square at the edge of the block it started on
+        int orient = RAND.nextInt(8);
+        double half = size * 0.5;
+        Stain first = null;
+        for (int bx = (int) Math.floor(x - half); bx <= (int) Math.floor(x + half); bx++) {
+            for (int bz = (int) Math.floor(z - half); bz <= (int) Math.floor(z + half); bz++) {
+                BlockPos.MutableBlockPos bp = new BlockPos.MutableBlockPos();
+                for (int dy = 0; dy < 3; dy++) {
+                    bp.setPos(bx, Math.floor(top - 0.01) - dy + 1, bz);
+                    IBlockState st = w.getBlockState(bp);
+                    if (st.getMaterial().isLiquid()) break;
+                    AxisAlignedBB bb = st.getCollisionBoundingBox(w, bp);
+                    if (bb == null || bb.maxY - bb.minY <= 0) continue;
+                    bb = bb.offset(bp);
+                    if (Math.abs(bb.maxY - top) > 0.55) break;   // a step up or down: the pool doesn't climb it
+                    if (!w.isAirBlock(bp.up()) && w.getBlockState(bp.up()).getCollisionBoundingBox(w, bp.up()) != null) break;
+                    Stain s = addStain(t, EnumFacing.UP, bb, x, bb.maxY, z, size, size, grow, tile, orient, bp.up(), bp);
+                    if (first == null) {
+                        first = s;
+                        if (tile == T_POOL) s.dryAt *= 2.5f;   // pools stay wet for much longer than splatter
+                    } else {
+                        s.color = first.color; s.life = first.life; s.dryAt = first.dryAt; s.born = first.born;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /** The top of the ground under (x,y,z), searching a few blocks down; NaN if none (or water). */
+    private static double ground(World w, double x, double y, double z) {
         BlockPos.MutableBlockPos bp = new BlockPos.MutableBlockPos();
         for (int dy = 0; dy < 4; dy++) {
             bp.setPos(x, y + 0.2 - dy, z);
             IBlockState st = w.getBlockState(bp);
-            if (st.getMaterial().isLiquid()) return;
+            if (st.getMaterial().isLiquid()) return Double.NaN;
             AxisAlignedBB bb = st.getCollisionBoundingBox(w, bp);
             if (bb == null || bb.maxY - bb.minY <= 0) continue;
             bb = bb.offset(bp);
             if (bb.maxY > y + 0.3) continue;   // a block we're standing in, not on
-            Stain s = addStain(t, EnumFacing.UP, bb, x, bb.maxY, z, size, size, grow, tile, RAND.nextInt(8), bp.up(), bp);
-            // pools stay wet for much longer than splatter
-            if (s != null && tile == T_POOL) s.dryAt *= 2.5f;
-            return;
+            return bb.maxY;
         }
+        return Double.NaN;
     }
 
     /** A stain `su` x `sv` blocks (along the face's u and v) centred on (x,y,z). */
