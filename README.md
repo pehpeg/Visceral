@@ -29,6 +29,23 @@ works in single player and on any server.
   sound has several takes, and each play is pitched slightly differently. A resource pack can
   replace any of them (`assets/visceral/sounds.json`).
 
+- **Wounds.** Hurt creatures get bloody: the blood soaks into their skin, fur or scales in four
+  levels as their health drops, on every model, modded ones included. Corpses and creatures missing a
+  limb are soaked worst.
+- **Stumps.** A torn-off limb or head leaves a raw stump of meat and bone, on the creature and on the
+  part that flew off. Gibs are bloody too.
+- **Deaths that fit the kill.** Explosions blow creatures apart and fling the parts high. Fire chars
+  them black and they smoke. A long fall splatters them flat. Arrows and other projectiles spray out
+  the far side. Some sword kills take the head off or a limb, and the rest of the body drops.
+- **Gibs you can kick.** In water they float and wash a red slick across the surface; in lava they
+  char and burn up.
+- **Footprints.** Walk through blood and you leave red prints for a few steps, with a wet squelch.
+- **Flies.** Gore that's been lying around a while draws a buzzing swarm.
+- **Blood on your weapon.** Hits that draw blood leave it on your weapon and hand, building up over
+  four levels in that blood's colour. It wears off slowly and washes off in water or rain. Works with
+  any item, modded weapons included.
+- **Bodies hit the ground** with a thud.
+
 ## Modded creatures
 Nothing has to be set up per mod:
 - **Hits and deaths** come from what the game already tells every client: the hurt timer, the
@@ -60,18 +77,36 @@ Nothing has to be set up per mod:
   }
 }
 ```
+A creature can also get its own options instead of just a blood type:
+```json
+"creatures": {
+  "somemod:big_boss": { "blood": "red", "gibs": 0.25, "limbs": false, "styles": false },
+  "othermod:robot":   { "blood": "metal", "wounds": false, "chunks": 2 }
+}
+```
+`gibs` scales how likely its deaths are to burst (0 never, 1 as configured), `chunks` scales how many chunks
+fly, and `limbs`, `styles` and `wounds` switch limb loss, the death styles and wounds off for it.
+
 The styles are `liquid`, `slime`, `dust`, `sparks`, `embers`, `ecto` and `none` (no gore at all).
 Press **F3+T** in game to reload the file.
 
 ## Settings
-Mods → Visceral → Config, or `config/visceral.cfg`. Changes apply at once.
-- **Blood:** amount, stains on/off, stain lifetime, the maximum number of stains and droplets, and the
-  range around you.
-- **Gibs:** death gibs on/off, the chance a death bursts, only your kills, chunks and how many, force,
-  gib lifetime, the maximum number of gibs, limb loss (on/off, the damage share needed, and the
-  chance), and whether players gib.
-- **Extras:** bleeding and the health share below which it starts, blood pools, screen blood and its
-  strength, and sounds and their volume.
+Mods → Visceral → Config, the **Visceral...** button in the pause menu, or `config/visceral.cfg`.
+Changes apply at once.
+- **Presets:** Low, Medium, High and Insane set the amounts in one click (moving an amount yourself
+  switches to Custom).
+- **Switches** for every feature, sliders for blood amount, gib force, volume, stain and gib
+  lifetime and the burst chance, a blood colour button (natural, green, black, purple, yellow, blue),
+  and buttons to reload the blood list and clear all gore.
+- **Mild mode:** no red at all. Creatures puff into dust and bits instead, and wounds, flies and the
+  bloody weapon are off. Good for streams and younger players.
+- **Every setting...** opens the full list: the blood amount, stains and their lifetime and limits,
+  the chance a death bursts, only your kills, chunk count, force, limb loss (the damage share
+  needed, and the chance), whether players gib, bleeding and where it starts, screen blood
+  strength, volume and the rest.
+
+Press **F3** to see Visceral's line: how many stains, droplets, gibs and flies there are, what it
+costs per frame, and what the last death was and why.
 
 Bosses (the dragon, the wither, and modded bosses that mark themselves as bosses) bleed but keep
 their own death animations. You never gib yourself.
