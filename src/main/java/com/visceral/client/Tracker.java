@@ -373,7 +373,7 @@ public final class Tracker {
     /** The server (single player) says what really happened: that wins over the client's guess. */
     private static void refine(Minecraft mc, EntityLivingBase l, Hit h, Exact.Info x) {
         h.exact = true;
-        h.yours = x.by(mc.player.getUniqueID());
+        h.yours = x.by(mc.player.getEntityId());
         boolean hasFrom = !Double.isNaN(x.ax);
         switch (x.kind) {
             case EXPLOSION:

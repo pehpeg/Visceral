@@ -22,6 +22,7 @@ import java.io.File;
         name = Visceral.NAME,
         version = Visceral.VERSION,
         clientSideOnly = true,
+        acceptableRemoteVersions = "*",   // friends with or without it can join your world, and you theirs
         guiFactory = "com.visceral.client.GuiFactory",
         acceptedMinecraftVersions = "[1.12.2]"
 )
@@ -35,6 +36,7 @@ public class Visceral {
     public void preInit(FMLPreInitializationEvent event) {
         BloodTypes.init(new File(event.getModConfigurationDirectory(), "visceral-blood.json"));
         VisceralConfig.applyPreset();
+        com.visceral.client.Exact.register();
         // F3+T reloads the blood list, and Visceral's textures come back with the rest
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener((IResourceManagerReloadListener) rm -> { BloodTypes.reload(); com.visceral.client.Wounds.reload(); com.visceral.client.ModelParts.forgetTextures(); });

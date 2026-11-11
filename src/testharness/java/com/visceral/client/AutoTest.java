@@ -359,6 +359,8 @@ public final class AutoTest {
     /** Weapons, crits, sweeps, headshots, pets, rain. */
     private static int round5(int t) {
         Tracker.testStyle = -1;
+        // from here the server's word comes by network, the way a friend on your LAN world gets it
+        at(t, () -> Exact.viaNetwork = true);
         // a sweep: two zombies side by side, a sword swing at one; the sweep kills the other (cut in half)
         at(t, () -> spawn("minecraft:zombie"));
         at(t + 2, () -> server(() -> {
