@@ -75,7 +75,7 @@ public final class Tracker {
     public static void onSound(net.minecraftforge.client.event.sound.PlaySoundEvent event) {
         net.minecraft.client.audio.ISound snd = event.getSound();
         if (snd == null || snd.getSoundLocation() == null) return;
-        if (!"entity.generic.explode".equals(snd.getSoundLocation().getResourcePath())) return;
+        if (!"entity.generic.explode".equals(snd.getSoundLocation().getPath())) return;
         BOOMS.add(new double[]{snd.getXPosF(), snd.getYPosF(), snd.getZPosF(), clock});
         if (BOOMS.size() > 16) BOOMS.remove(0);
     }
@@ -274,7 +274,7 @@ public final class Tracker {
             // and where it came out: back along its path from beyond the far side
             Vec3d in = new Vec3d(h.px, h.py, h.pz);
             double far = l.width + l.height + 1;
-            Vec3d beyond = in.addVector(h.dx * far, h.dy * far, h.dz * far);
+            Vec3d beyond = in.add(h.dx * far, h.dy * far, h.dz * far);
             RayTraceResult out = bb.calculateIntercept(beyond, in);
             Vec3d o = out != null ? out.hitVec : in;
             h.ex = o.x; h.ey = o.y; h.ez = o.z;
