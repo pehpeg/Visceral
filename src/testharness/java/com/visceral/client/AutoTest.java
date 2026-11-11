@@ -452,7 +452,7 @@ public final class AutoTest {
             Entity wolf = sworld().getEntityByID(side), pig = sworld().getEntityByID(mobId);
             if (wolf instanceof EntityLiving && pig instanceof EntityLivingBase) {
                 ((EntityLiving) wolf).setAttackTarget((EntityLivingBase) pig);
-                wolf.attackEntityAsMob(pig);
+                ((EntityLiving) wolf).attackEntityAsMob(pig);
             }
         }));
         at(t + 16, () -> shot("65_pet_kill"));
