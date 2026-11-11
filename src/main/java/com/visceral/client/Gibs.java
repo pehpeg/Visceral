@@ -175,7 +175,8 @@ public final class Gibs {
             if (slot == 3 || slot == 4) lost.arm = true;
         }
         float sxl = ModelParts.len(g.lin[0], g.lin[3], g.lin[6]), szl = ModelParts.len(g.lin[2], g.lin[5], g.lin[8]);
-        lost.stumps.add(new float[]{(float) g.sx, (float) g.sy, (float) g.sz, 2f * g.hx * sxl * 0.85f, 2f * g.hz * szl * 0.85f});
+        lost.stumps.add(new float[]{(float) g.sx, (float) g.sy, (float) g.sz, 2f * g.hx * sxl * 0.85f, 2f * g.hz * szl * 0.85f,
+                g.limb || g.head ? 1f : 0f});
         Gib gb = fromGroup(g, cap, t);
         gb.whole = true;
         double ox = g.wx - e.posX, oz = g.wz - e.posZ;
@@ -362,8 +363,9 @@ public final class Gibs {
         if (dz != odz) { impact = Math.max(impact, Math.abs(g.vz)); g.vz = -g.vz * 0.3f; }
         if (g.ground && Math.abs(g.vx) < 0.15f && Math.abs(g.vz) < 0.15f) { g.vx = 0; g.vz = 0; }
         if (g.ground && wasGround) {
-            // lying down: the tumble dies out
+            // lying down: the tumble dies out, and anything long topples over instead of standing on end
             g.wx *= 0.6f; g.wy *= 0.6f; g.wz *= 0.6f;
+            if (g.group != null) topple(g);
         }
         float wl = (float) Math.sqrt(g.wx * g.wx + g.wy * g.wy + g.wz * g.wz);
         if (wl > 1e-3f) {
@@ -390,6 +392,30 @@ public final class Gibs {
             if (VisceralConfig.extras.bloodPools) Blood.groundStain(t, g.x, g.y, g.z, Math.min(1.6f, g.r * 4f + 0.25f), 3f, Blood.T_POOL);
         }
         if (t.style == Style.EMBERS && g.age < 3f && Blood.RAND.nextInt(5) == 0) Blood.mist(t, g.x, g.y, g.z, 0.5f);
+    }
+
+    /** A long part resting on its end tips over until it lies along the ground. */
+    private static void topple(Gib g) {
+        float[] e = {ModelParts.len(g.lin[0], g.lin[3], g.lin[6]) * g.group.hx,
+                ModelParts.len(g.lin[1], g.lin[4], g.lin[7]) * g.group.hy,
+                ModelParts.len(g.lin[2], g.lin[5], g.lin[8]) * g.group.hz};
+        int j = e[0] >= e[1] && e[0] >= e[2] ? 0 : e[1] >= e[2] ? 1 : 2;
+        float other = Math.max(e[(j + 1) % 3], e[(j + 2) % 3]);
+        if (e[j] < other * 1.4f) return;   // not long enough to care which way up it lies
+        float ax = g.lin[j], ay = g.lin[3 + j], az = g.lin[6 + j];
+        float al = (float) Math.sqrt(ax * ax + ay * ay + az * az);
+        ax /= al; ay /= al; az /= al;
+        if (Math.abs(ay) < 0.2f) return;
+        // turn about the horizontal axis across it, the way that brings its long axis down
+        float nx = az, nz = -ax;   // (a x up)
+        float nl = (float) Math.sqrt(nx * nx + nz * nz);
+        if (nl < 1e-4f) { nx = 1f; nz = 0f; nl = 1f; }
+        float step = Math.min(0.22f, Math.abs(ay) * 0.6f + 0.05f);
+        float[] r = axisAngle(nx / nl, 0f, nz / nl, ay > 0 ? step : -step);
+        float ty = r[3] * ax + r[4] * ay + r[5] * az;
+        if (Math.abs(ty) > Math.abs(ay)) r = axisAngle(nx / nl, 0f, nz / nl, ay > 0 ? -step : step);
+        float[] o = mul3(r, g.lin);
+        System.arraycopy(o, 0, g.lin, 0, 9);
     }
 
     // ------------------------------------------------------------------ hiding the corpse and torn-off parts
@@ -596,7 +622,7 @@ public final class Gibs {
                     if (bloody) { Wounds.end(); bloody = false; }
                     // the torn end: raw flesh and bone where it came off
                     if (stumpsOn() && g.type.stains()) {
-                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f);
+                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head);
                         mc.getTextureManager().bindTexture(g.tex);
                         bound = g.tex;
                     }
@@ -632,7 +658,7 @@ public final class Gibs {
                         float f = Math.min(1f, (float) Math.sqrt(Math.max(0f, (e.deathTime + pt - 1f) / 20f * 1.6f)));
                         GlStateManager.rotate(f * 90f, 0f, 0f, 1f);
                     }
-                    cap(st[3], st[4]);
+                    cap(st[3], st[4], st[5] > 0.5f);
                     GlStateManager.popMatrix();
                 }
             }
@@ -646,7 +672,8 @@ public final class Gibs {
     }
 
     /** The cut end of a limb: a thin slab of raw flesh with bone in the middle, w x d blocks, at the joint. */
-    private static void cap(float w, float d) {
+    private static void cap(float w, float d, boolean bone) {
+        float u0 = bone ? 0f : 0.5f, u1 = u0 + 0.5f;
         w = Math.max(0.08f, w);
         d = Math.max(0.08f, d);
         float hw = w * 0.5f, hd = d * 0.5f, h = Math.min(0.05f, Math.min(w, d) * 0.18f);
@@ -657,19 +684,19 @@ public final class Gibs {
         BufferBuilder b = tess.getBuffer();
         b.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_NORMAL);
         // both flat faces show the cut (whichever way the part hangs); the edges show the fatty rim
-        b.pos(-hw, h, -hd).tex(0, 0).normal(0, 1, 0).endVertex(); b.pos(-hw, h, hd).tex(0, 1).normal(0, 1, 0).endVertex();
-        b.pos(hw, h, hd).tex(1, 1).normal(0, 1, 0).endVertex(); b.pos(hw, h, -hd).tex(1, 0).normal(0, 1, 0).endVertex();
-        b.pos(-hw, -h, -hd).tex(0, 0).normal(0, -1, 0).endVertex(); b.pos(hw, -h, -hd).tex(1, 0).normal(0, -1, 0).endVertex();
-        b.pos(hw, -h, hd).tex(1, 1).normal(0, -1, 0).endVertex(); b.pos(-hw, -h, hd).tex(0, 1).normal(0, -1, 0).endVertex();
+        b.pos(-hw, h, -hd).tex(u0, 0).normal(0, 1, 0).endVertex(); b.pos(-hw, h, hd).tex(u0, 1).normal(0, 1, 0).endVertex();
+        b.pos(hw, h, hd).tex(u1, 1).normal(0, 1, 0).endVertex(); b.pos(hw, h, -hd).tex(u1, 0).normal(0, 1, 0).endVertex();
+        b.pos(-hw, -h, -hd).tex(u0, 0).normal(0, -1, 0).endVertex(); b.pos(hw, -h, -hd).tex(u1, 0).normal(0, -1, 0).endVertex();
+        b.pos(hw, -h, hd).tex(u1, 1).normal(0, -1, 0).endVertex(); b.pos(-hw, -h, hd).tex(u0, 1).normal(0, -1, 0).endVertex();
         float e0 = 0.02f, e1 = 0.12f;
-        b.pos(hw, -h, -hd).tex(e0, 0).normal(1, 0, 0).endVertex(); b.pos(hw, h, -hd).tex(e1, 0).normal(1, 0, 0).endVertex();
-        b.pos(hw, h, hd).tex(e1, 1).normal(1, 0, 0).endVertex(); b.pos(hw, -h, hd).tex(e0, 1).normal(1, 0, 0).endVertex();
-        b.pos(-hw, -h, -hd).tex(e0, 0).normal(-1, 0, 0).endVertex(); b.pos(-hw, -h, hd).tex(e0, 1).normal(-1, 0, 0).endVertex();
-        b.pos(-hw, h, hd).tex(e1, 1).normal(-1, 0, 0).endVertex(); b.pos(-hw, h, -hd).tex(e1, 0).normal(-1, 0, 0).endVertex();
-        b.pos(-hw, -h, hd).tex(0, e0).normal(0, 0, 1).endVertex(); b.pos(hw, -h, hd).tex(1, e0).normal(0, 0, 1).endVertex();
-        b.pos(hw, h, hd).tex(1, e1).normal(0, 0, 1).endVertex(); b.pos(-hw, h, hd).tex(0, e1).normal(0, 0, 1).endVertex();
-        b.pos(-hw, -h, -hd).tex(0, e0).normal(0, 0, -1).endVertex(); b.pos(-hw, h, -hd).tex(0, e1).normal(0, 0, -1).endVertex();
-        b.pos(hw, h, -hd).tex(1, e1).normal(0, 0, -1).endVertex(); b.pos(hw, -h, -hd).tex(1, e0).normal(0, 0, -1).endVertex();
+        b.pos(hw, -h, -hd).tex(u0 + e0 * 0.5f, 0).normal(1, 0, 0).endVertex(); b.pos(hw, h, -hd).tex(u0 + e1 * 0.5f, 0).normal(1, 0, 0).endVertex();
+        b.pos(hw, h, hd).tex(u0 + e1 * 0.5f, 1).normal(1, 0, 0).endVertex(); b.pos(hw, -h, hd).tex(u0 + e0 * 0.5f, 1).normal(1, 0, 0).endVertex();
+        b.pos(-hw, -h, -hd).tex(u0 + e0 * 0.5f, 0).normal(-1, 0, 0).endVertex(); b.pos(-hw, -h, hd).tex(u0 + e0 * 0.5f, 1).normal(-1, 0, 0).endVertex();
+        b.pos(-hw, h, hd).tex(u0 + e1 * 0.5f, 1).normal(-1, 0, 0).endVertex(); b.pos(-hw, h, -hd).tex(u0 + e1 * 0.5f, 0).normal(-1, 0, 0).endVertex();
+        b.pos(-hw, -h, hd).tex(u0, e0).normal(0, 0, 1).endVertex(); b.pos(hw, -h, hd).tex(u1, e0).normal(0, 0, 1).endVertex();
+        b.pos(hw, h, hd).tex(u1, e1).normal(0, 0, 1).endVertex(); b.pos(-hw, h, hd).tex(u0, e1).normal(0, 0, 1).endVertex();
+        b.pos(-hw, -h, -hd).tex(u0, e0).normal(0, 0, -1).endVertex(); b.pos(-hw, h, -hd).tex(u0, e1).normal(0, 0, -1).endVertex();
+        b.pos(hw, h, -hd).tex(u1, e1).normal(0, 0, -1).endVertex(); b.pos(hw, -h, -hd).tex(u1, e0).normal(0, 0, -1).endVertex();
         tess.draw();
     }
 
