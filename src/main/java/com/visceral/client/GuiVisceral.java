@@ -40,7 +40,6 @@ public final class GuiVisceral extends GuiScreen {
             new Toggle("Chunks", () -> VisceralConfig.gibs.chunks, v -> VisceralConfig.gibs.chunks = v),
             new Toggle("Kick gibs", () -> VisceralConfig.gibs.kickable, v -> VisceralConfig.gibs.kickable = v),
             new Toggle("Wounds", () -> VisceralConfig.extras.wounds, v -> VisceralConfig.extras.wounds = v),
-            new Toggle("Stumps", () -> VisceralConfig.extras.stumps, v -> VisceralConfig.extras.stumps = v),
             new Toggle("Bleeding", () -> VisceralConfig.extras.bleeding, v -> VisceralConfig.extras.bleeding = v),
             new Toggle("Pools", () -> VisceralConfig.extras.bloodPools, v -> VisceralConfig.extras.bloodPools = v),
             new Toggle("Footprints", () -> VisceralConfig.extras.footprints, v -> VisceralConfig.extras.footprints = v),

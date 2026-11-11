@@ -532,55 +532,6 @@ public final class ModelParts {
         return n == 0 ? -1 : (int) (acc[0] / n) << 16 | (int) (acc[1] / n) << 8 | (int) (acc[2] / n);
     }
 
-    private static java.lang.reflect.Field quadsField;
-    private static boolean quadsLooked;
-
-    /** ModelBox's faces (a private field, found by its type so it works under any mapping). */
-    private static net.minecraft.client.model.TexturedQuad[] quads(ModelBox box) throws IllegalAccessException {
-        if (!quadsLooked) {
-            quadsLooked = true;
-            for (java.lang.reflect.Field f : ModelBox.class.getDeclaredFields()) {
-                if (f.getType() == net.minecraft.client.model.TexturedQuad[].class) { f.setAccessible(true); quadsField = f; }
-            }
-        }
-        return quadsField == null ? null : (net.minecraft.client.model.TexturedQuad[]) quadsField.get(box);
-    }
-
-    /**
-     * The colour of one body part's own skin: the average of the texture where that part's boxes are
-     * painted (a zombie's head is green even though its texture is mostly shirt). Falls back to the
-     * whole texture's average; -1 if unknown.
-     */
-    static int partColor(ResourceLocation tex, Group g) {
-        if (tex == null || g == null) return -1;
-        try {
-            int[] px = pixels(tex);
-            if (px.length <= 2) return -1;
-            int w = px[0], h = px[1];
-            acc[0] = acc[1] = acc[2] = acc[3] = 0;
-            for (ModelRenderer mr : g.roots) {
-                if (mr.cubeList == null) continue;
-                for (ModelBox box : mr.cubeList) {
-                    net.minecraft.client.model.TexturedQuad[] qs = quads(box);
-                    if (qs == null) return averageColor(tex);
-                    for (net.minecraft.client.model.TexturedQuad q : qs) {
-                        if (q == null || q.vertexPositions == null) continue;
-                        float u0 = 1, v0 = 1, u1 = 0, v1 = 0;
-                        for (net.minecraft.client.model.PositionTextureVertex v : q.vertexPositions) {
-                            u0 = Math.min(u0, v.texturePositionX); u1 = Math.max(u1, v.texturePositionX);
-                            v0 = Math.min(v0, v.texturePositionY); v1 = Math.max(v1, v.texturePositionY);
-                        }
-                        add(px, Math.round(u0 * w), Math.round(v0 * h), Math.round(u1 * w), Math.round(v1 * h), 1);
-                    }
-                }
-            }
-            int c = result();
-            return c >= 0 ? c : averageColor(tex);
-        } catch (Throwable t) {
-            return averageColor(tex);
-        }
-    }
-
     // ------------------------------------------------------------------ poses
 
     static void savePose(Map<ModelRenderer, float[]> into, ModelRenderer mr) {

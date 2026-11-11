@@ -165,9 +165,6 @@ public class VisceralConfig {
         @Config.Comment("Hurt creatures get bloody: blood soaks into their skin, fur and armour, more the more hurt they are.")
         public boolean wounds = true;
 
-        @Config.Comment("Raw flesh and bone where a limb or head came off: on the creature and on the part that flew off.")
-        public boolean stumps = true;
-
         @Config.Comment("A creature that dies without bursting leaves a pool of blood spreading under it.")
         public boolean bloodPools = true;
 

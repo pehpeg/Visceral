@@ -32,8 +32,6 @@ works in single player and on any server.
 - **Wounds.** Hurt creatures get bloody: the blood soaks into their skin, fur or scales in four
   levels as their health drops, on every model, modded ones included. Corpses and creatures missing a
   limb are soaked worst.
-- **Stumps.** A torn-off limb or head leaves a raw stump of meat and bone, on the creature and on the
-  part that flew off. Gibs are bloody too.
 - **Deaths that fit the kill.** Explosions blow creatures apart and fling the parts high. Fire chars
   them black and they smoke. A long fall splatters them flat. Arrows and other projectiles spray out
   the far side. Some sword kills take the head off or a limb, and the rest of the body drops.

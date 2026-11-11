@@ -74,7 +74,6 @@ public final class Gibs {
         boolean ground, splatted, pooled;
         float chunk;                 // chunk size (blocks)
         int color;
-        int skin = -2;               // the part's own skin colour, for its cut end (-2: not looked up yet)
     }
 
     private static final List<Gib> GIBS = new ArrayList<>();
@@ -90,8 +89,6 @@ public final class Gibs {
         final List<Integer> rootIndex = new ArrayList<>();    // which top-level piece (for layers with the same model shape)
         boolean arm;                                          // an arm: its held item goes too
         ModelBase model;
-        /** Where each lost part joined the body, around the creature (as Group.sx..), the cut's size, bone, and the part's skin colour: {x, y, z, w, d, bone, skin}. */
-        final List<float[]> stumps = new ArrayList<>();
     }
 
     /**
@@ -190,9 +187,6 @@ public final class Gibs {
             lost.bipedSlots.add(slot);
             if (slot == 3 || slot == 4) lost.arm = true;
         }
-        float sxl = ModelParts.len(g.lin[0], g.lin[3], g.lin[6]), szl = ModelParts.len(g.lin[2], g.lin[5], g.lin[8]);
-        lost.stumps.add(new float[]{(float) g.sx, (float) g.sy, (float) g.sz, 2f * g.hx * sxl * 0.85f, 2f * g.hz * szl * 0.85f,
-                g.limb || g.head ? 1f : 0f, ModelParts.partColor(cap.tex, g)});
         Gib gb = fromGroup(g, cap, t);
         gb.whole = true;
         double ox = g.wx - e.posX, oz = g.wz - e.posZ;
@@ -653,7 +647,7 @@ public final class Gibs {
 
     private static void onRenderWorld0(RenderWorldLastEvent event) {
         if (!HIDDEN.isEmpty() || !REMOVED.isEmpty()) restore();
-        if (GIBS.isEmpty() && (LOST.isEmpty() || !stumpsOn())) return;
+        if (GIBS.isEmpty()) return;
         float bx = OpenGlHelper.lastBrightnessX, by = OpenGlHelper.lastBrightnessY;
         GlGuard.push();
         GlGuard.worldLit();
@@ -731,14 +725,6 @@ public final class Gibs {
                 try {
                     ModelParts.drawGroup(g.group, g.whole);
                     if (bloody) { Wounds.end(); bloody = false; }
-                    // the torn end: raw flesh and bone where it came off
-                    GlStateManager.color(1f, 1f, 1f, 1f);
-                    if (close && stumpsOn() && g.type.stains() && !g.charred) {
-                        if (g.skin == -2) g.skin = ModelParts.partColor(g.tex, g.group);
-                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head, g.skin);
-                        mc.getTextureManager().bindTexture(g.tex);
-                        bound = g.tex;
-                    }
                 } catch (RuntimeException ex) {
                     g.life = g.age;   // a model that won't draw like this: drop this gib
                 } finally {
@@ -753,96 +739,9 @@ public final class Gibs {
             GlStateManager.popMatrix();
         }
         GlStateManager.color(1f, 1f, 1f, 1f);
-        if (stumpsOn() && !LOST.isEmpty()) {
-            for (Map.Entry<Integer, Lost> en : LOST.entrySet()) {
-                Entity ent = w.getEntityByID(en.getKey());
-                if (!(ent instanceof EntityLivingBase) || BURST.contains(en.getKey())) continue;
-                EntityLivingBase e = (EntityLivingBase) ent;
-                if (!BloodTypes.of(e).stains()) continue;
-                for (float[] st : en.getValue().stumps) {
-                    double[] p = joint(e, st[0], st[1], st[2], pt);
-                    bp.setPos(p[0], p[1], p[2]);
-                    int light = w.getCombinedLight(bp, 0);
-                    OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light % 65536, light / 65536);
-                    GlStateManager.pushMatrix();
-                    GlStateManager.translate(p[0] - cx, p[1] - cy, p[2] - cz);
-                    GlStateManager.rotate((float) p[3], 0f, 1f, 0f);
-                    if (e.deathTime > 0) {
-                        float f = Math.min(1f, (float) Math.sqrt(Math.max(0f, (e.deathTime + pt - 1f) / 20f * 1.6f)));
-                        GlStateManager.rotate(f * 90f, 0f, 0f, 1f);
-                    }
-                    cap(st[3], st[4], st[5] > 0.5f, (int) st[6]);
-                    GlStateManager.popMatrix();
-                }
-            }
-        }
     }
 
-    private static final ResourceLocation FLESH = new ResourceLocation(Visceral.MODID, "textures/fx/flesh.png");
     private static final net.minecraft.client.renderer.culling.Frustum FRUSTUM = new net.minecraft.client.renderer.culling.Frustum();
-
-    static boolean stumpsOn() {
-        return VisceralConfig.enabled && VisceralConfig.extras.stumps && !VisceralConfig.extras.mild;
-    }
-
-    /**
-     * The cut end of a limb: a thin slab of raw flesh with bone in the middle, w x d blocks, at the
-     * joint. The creature's skin shows round the edge of the cut and down the slab's sides, in its own
-     * colour (`skin`, the average of its texture; -1 if unknown): the skin is drawn first, tinted,
-     * then the meat over it.
-     */
-    private static void cap(float w, float d, boolean bone, int skin) {
-        w = Math.max(0.08f, w);
-        d = Math.max(0.08f, d);
-        float hw = w * 0.5f, hd = d * 0.5f, h = Math.min(0.05f, Math.min(w, d) * 0.18f);
-        Minecraft.getMinecraft().getTextureManager().bindTexture(FLESH);
-        GlStateManager.enableTexture2D();
-        GlStateManager.enableAlpha();
-        GlStateManager.alphaFunc(GL11.GL_GREATER, 0.5f);
-        float sr = 0.8f, sg = 0.66f, sb = 0.52f;
-        if (skin >= 0) {
-            // a touch brighter than the texture's average (that's pulled down by its dark details)
-            sr = Math.min(1f, ((skin >> 16) & 255) / 255f * 1.12f);
-            sg = Math.min(1f, ((skin >> 8) & 255) / 255f * 1.12f);
-            sb = Math.min(1f, (skin & 255) / 255f * 1.12f);
-        }
-        float u0 = bone ? 0f : 0.5f;
-        try {
-            GlStateManager.color(sr, sg, sb, 1f);
-            slab(hw, hd, h, u0, 0.5f, true);
-            GlStateManager.color(1f, 1f, 1f, 1f);
-            slab(hw, hd, h, u0, 0f, false);
-        } finally {
-            GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1f);
-            GlStateManager.color(1f, 1f, 1f, 1f);
-        }
-    }
-
-    /** One layer of the cap: both flat faces (texture row v0) and, for the skin layer, the four sides. */
-    private static void slab(float hw, float hd, float h, float u0, float v0, boolean sides) {
-        float u1 = u0 + 0.5f, v1 = v0 + 0.5f;
-        Tessellator tess = Tessellator.getInstance();
-        BufferBuilder b = tess.getBuffer();
-        b.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_NORMAL);
-        // both flat faces show the cut, whichever way the part hangs
-        b.pos(-hw, h, -hd).tex(u0, v0).normal(0, 1, 0).endVertex(); b.pos(-hw, h, hd).tex(u0, v1).normal(0, 1, 0).endVertex();
-        b.pos(hw, h, hd).tex(u1, v1).normal(0, 1, 0).endVertex(); b.pos(hw, h, -hd).tex(u1, v0).normal(0, 1, 0).endVertex();
-        b.pos(-hw, -h, -hd).tex(u0, v0).normal(0, -1, 0).endVertex(); b.pos(hw, -h, -hd).tex(u1, v0).normal(0, -1, 0).endVertex();
-        b.pos(hw, -h, hd).tex(u1, v1).normal(0, -1, 0).endVertex(); b.pos(-hw, -h, hd).tex(u0, v1).normal(0, -1, 0).endVertex();
-        if (sides) {
-            // the sides: a strip of skin
-            float a = v0 + 0.02f, c = v0 + 0.1f, ua = u0 + 0.01f, uc = u0 + 0.05f;
-            b.pos(hw, -h, -hd).tex(ua, v0).normal(1, 0, 0).endVertex(); b.pos(hw, h, -hd).tex(uc, v0).normal(1, 0, 0).endVertex();
-            b.pos(hw, h, hd).tex(uc, v1).normal(1, 0, 0).endVertex(); b.pos(hw, -h, hd).tex(ua, v1).normal(1, 0, 0).endVertex();
-            b.pos(-hw, -h, -hd).tex(ua, v0).normal(-1, 0, 0).endVertex(); b.pos(-hw, -h, hd).tex(ua, v1).normal(-1, 0, 0).endVertex();
-            b.pos(-hw, h, hd).tex(uc, v1).normal(-1, 0, 0).endVertex(); b.pos(-hw, h, -hd).tex(uc, v0).normal(-1, 0, 0).endVertex();
-            b.pos(-hw, -h, hd).tex(u0, a).normal(0, 0, 1).endVertex(); b.pos(hw, -h, hd).tex(u1, a).normal(0, 0, 1).endVertex();
-            b.pos(hw, h, hd).tex(u1, c).normal(0, 0, 1).endVertex(); b.pos(-hw, h, hd).tex(u0, c).normal(0, 0, 1).endVertex();
-            b.pos(-hw, -h, -hd).tex(u0, a).normal(0, 0, -1).endVertex(); b.pos(-hw, h, -hd).tex(u0, c).normal(0, 0, -1).endVertex();
-            b.pos(hw, h, -hd).tex(u1, c).normal(0, 0, -1).endVertex(); b.pos(hw, -h, -hd).tex(u1, a).normal(0, 0, -1).endVertex();
-        }
-        tess.draw();
-    }
 
     /** A plain lit cube s blocks across, centred. */
     private static void cube(float s, int c, float a) {

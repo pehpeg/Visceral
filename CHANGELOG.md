@@ -3,7 +3,7 @@
 ## 0.2.0
 - **Wounds:** hurt creatures get bloody in four levels as they lose health, on any model. Corpses
   and creatures missing a limb are soaked worst.
-- **Stumps:** torn-off limbs and heads leave a raw stump of meat and bone. Gibs are bloody.
+- Gibs are bloody.
 - **Death styles by cause:** explosions blow creatures apart and fling the parts high, fire chars
   them, long falls splatter them, projectiles spray out the far side, and some melee kills take the
   head or a limb off instead of a burst.
