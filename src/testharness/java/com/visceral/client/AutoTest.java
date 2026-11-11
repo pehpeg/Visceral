@@ -292,7 +292,8 @@ public final class AutoTest {
         at(t + 122, () -> shot("54_footprints"));
         t += 130;
         // burning to death slowly, as in daylight: a zombie on 2 health, set alight, left to burn
-        at(t, () -> { spawn("minecraft:zombie"); Tracker.testStyle = -1; });
+        // (with "only your kills": it isn't yours, so it shouldn't burst; it should crumble to ash)
+        at(t, () -> { spawn("minecraft:zombie"); Tracker.testStyle = -1; VisceralConfig.gibs.onlyYourKills = true; });
         at(t + 15, () -> server(() -> {
             Entity e = sworld().getEntityByID(mobId);
             if (e instanceof EntityLivingBase) { ((EntityLivingBase) e).setHealth(2f); e.setFire(20); }
@@ -323,6 +324,7 @@ public final class AutoTest {
             Entity e = sworld().getEntityByID(mobId); if (e != null) e.setDead();
             splayer().inventory.currentItem = 0;
         }));
+        at(t + 89, () -> VisceralConfig.gibs.onlyYourKills = false);
         at(t + 90, () -> Minecraft.getMinecraft().player.inventory.currentItem = 0);
         t += 95;
         return t;

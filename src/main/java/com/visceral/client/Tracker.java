@@ -52,6 +52,7 @@ public final class Tracker {
         int bloodySteps, feetColor;        // prints left before the feet are clean
         Type feetType;
         boolean leftFoot;
+        boolean ash;                       // burnt to death without bursting: it crumbles to ash instead of the vanilla puff
     }
 
     /** What hurt a creature, as best the client can tell. */
@@ -216,6 +217,7 @@ public final class Tracker {
         }
         if (!s.dead) bleed(mc, l, s, t, self);
         else {
+            if (s.ash && l.deathTime >= 16 && !l.isDead) { s.ash = false; crumble(l, t); return; }
             spurt(l, s, t);
             // a corpse hitting the ground
             if (l.deathTime == 12 && !t.none() && !Gibs.burst(l.getEntityId())) Sfx.body(t, l.posX, l.posY, l.posZ, l.width * l.height);
@@ -469,6 +471,20 @@ public final class Tracker {
         event.getLeft().add("Visceral last death: " + lastDeath);
     }
 
+    /** A burnt corpse falls apart: charred chunks and ash, smoke and embers, and it's gone. */
+    private static void crumble(EntityLivingBase l, Type t) {
+        float size = MathHelper.clamp((l.width * l.height) / (0.6f * 1.95f), 0.3f, 6f);
+        double cx = l.posX, cy = l.posY + l.height * 0.25, cz = l.posZ;
+        int n = Math.max(6, Math.round(VisceralConfig.gibs.chunkCount * 1.3f * (float) Math.sqrt(size)));
+        // lying down now, so spread along the ground
+        Gibs.chunks(t, cx, l.posY + 0.05, cz, Math.max(l.width, l.height * 0.7f), 0.3f, n, 0, 0, 0.35f, true);
+        Blood.mist(BloodTypes.ember(), cx, cy, cz, 1.1f * (float) Math.sqrt(size));
+        Blood.spray(BloodTypes.ember(), cx, cy, cz, 0, 1, 0, 14, 1.5f, 1f);
+        Sfx.burn(cx, cy, cz);
+        lastDeath = name(l) + ": burnt to death, crumbled to ash [fire]";
+        l.setDead();
+    }
+
     /** For the in-game test: forces the next deaths' style (0 burst, 1 decapitation, 2 limb and corpse), -1 = random. */
     static int testStyle = -1;
 
@@ -492,13 +508,16 @@ public final class Tracker {
         }
         BloodTypes.Options opt = BloodTypes.options(l);
         boolean roll = (boom && opt.gibs > 0) || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance * opt.gibs;
-        boolean yours = !VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE;
+        // a fire you started (Fire Aspect, a flame bow) that finishes it off a few seconds later is your kill too
+        boolean yours = !VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE
+                || (fire && mine(l.getEntityId(), 12f) != null);
         boolean gib = VisceralConfig.gibs.deathGibs && goreAllowed(l, false) && roll && yours;
         if (!gib) {
             String why = VisceralConfig.extras.mild ? "mild mode" : !VisceralConfig.gibs.deathGibs ? "death gibs are off" : !l.isNonBoss() ? "it's a boss"
                     : l instanceof EntityPlayer && !VisceralConfig.gibs.players ? "players don't gib (setting)"
                     : !yours ? "not your kill (onlyYourKills)" : !roll ? "gibChance roll" : "?";
             lastDeath = name(l) + ": died normally (" + why + ") [" + h.cause.name().toLowerCase() + "]";
+            if (fire) lastDeath += ", crumbling to ash";
         }
         if (gib) {
             float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k)) * (boom ? 2.2f : fall ? 1.2f : 1f);
@@ -542,8 +561,10 @@ public final class Tracker {
             // draw, no shadow left behind, and no puff of smoke when it would have vanished
             if (!(l instanceof EntityPlayer)) l.setDead();
         } else if (fire) {
+            // burnt to death without bursting: it falls, then crumbles to ash and embers (no vanilla puff)
             Blood.mist(BloodTypes.ember(), cx, cy, cz, 0.9f);
             Sfx.burn(cx, cy, cz);
+            if (VisceralConfig.gibs.deathGibs && goreAllowed(l, false) && !(l instanceof EntityPlayer)) s.ash = true;
         } else {
             // dies like vanilla, with a last spurt and a pool spreading under it
             Blood.spray(t, cx, cy, cz, d[0], 0.5, d[1], Math.round((14 + 10 * size) * amt), 3f, 0.6f);
