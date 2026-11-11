@@ -1,0 +1,46 @@
+01_zombie: blood=rotten parts=6 [H B o o L L ]
+01_zombie:   after death -> gibs=16 droplets=0 stains=525 drawing=5.71ms
+02_skeleton: blood=bone parts=10 [H B o o o o L L L L ]
+02_skeleton:   after death -> gibs=18 droplets=0 stains=525 drawing=1.57ms
+03_creeper: blood=creeper parts=6 [H B L L L L ]
+03_creeper:   after death -> gibs=10 droplets=0 stains=850 drawing=2.29ms
+04_spider: blood=insect parts=11 [H B o L L L L L L L L ]
+04_spider:   after death -> gibs=27 droplets=0 stains=900 drawing=2.40ms
+05_slime: blood=slime parts=1 [B ]
+05_slime:   after death -> gibs=30 droplets=0 stains=900 drawing=2.58ms
+06_pig: blood=red parts=6 [H B L L L L ]
+06_pig:   after death -> gibs=21 droplets=0 stains=900 drawing=2.49ms
+07_chicken: blood=red parts=7 [H H B L L o o ]
+07_chicken:   after death -> gibs=18 droplets=0 stains=900 drawing=2.39ms
+08_villager: blood=red parts=5 [H o B L L ]
+08_villager:   after death -> gibs=17 droplets=0 stains=900 drawing=2.29ms
+09_villager_golem: blood=metal parts=6 [H B L L L L ]
+09_villager_golem:   after death -> gibs=11 droplets=0 stains=900 drawing=2.35ms
+10_blaze: blood=embers parts=13 [o o o o o o B o o o o o H ]
+10_blaze:   after death -> gibs=27 droplets=163 stains=900 drawing=1.95ms
+11_enderman: blood=ender parts=11 [H o B o o o o L L L L ]
+11_enderman:   after death -> gibs=27 droplets=9 stains=900 drawing=1.44ms
+12_wolf: blood=red parts=8 [H o B L L L L L ]
+12_wolf:   after death -> gibs=19 droplets=0 stains=900 drawing=1.68ms
+13_sheep: blood=red parts=8 [o o L L L L H B ]
+13_sheep:   after death -> gibs=25 droplets=0 stains=900 drawing=2.56ms
+14_cow: blood=red parts=8 [o o L L L L H B ]
+14_cow:   after death -> gibs=22 droplets=0 stains=900 drawing=2.41ms
+15_magma_cube: blood=magma parts=9 [o o o o o o o o B ]
+15_magma_cube:   after death -> gibs=25 droplets=65 stains=900 drawing=2.29ms
+16_test_nested: blood=rotten parts=6 [B^ H^ L^ L^ L^ L^ ]
+16_test_nested:   after death -> gibs=34 droplets=0 stains=900 drawing=2.21ms
+17_test_custom: blood=rotten parts=NONE (chunks only)
+17_test_custom:   after death -> gibs=43 droplets=0 stains=900 drawing=2.39ms
+sunburn: minecraft:zombie (blood rotten): burnt to death, crumbled to ash [fire]
+fire aspect: minecraft:pig (blood red): burnt up [fire, not yours, exact]
+sweep: minecraft:zombie (blood rotten): cut in half [melee, sharp, sweep, yours, exact]
+axe crit: minecraft:pig (blood red): cut in half [melee, chop, crit, yours, exact]
+blunt: minecraft:villager (blood red): head popped [melee, blunt, yours, exact]
+style 3: minecraft:zombie (blood rotten): head popped [melee, blunt, yours, exact]
+style 4: minecraft:cow (blood red): cut in half [melee, blunt, yours, exact]
+headshot: minecraft:zombie (blood rotten): head popped [projectile, headshot, yours, exact]
+pet: minecraft:pig (blood red): lost a limb and fell [melee, yours, exact]
+rain: stains placed 15
+rain at 300: raining true, open true, roofed false, stains 10
+rain: stains left 9
