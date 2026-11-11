@@ -1,0 +1,9 @@
+// The in-game test (GitHub only): with -PvisceralTest, the test code in src/testharness is added
+// and runClient starts Minecraft straight into the scripted test. Normal builds never include it.
+if (project.hasProperty('visceralTest')) {
+    sourceSets.main.java.srcDir 'src/testharness/java'
+    tasks.named('runClient').configure {
+        extraJvmArgs.add('-Dvisceral.autotest=true')
+        extraArgs.addAll(['--width', '1280', '--height', '720'])
+    }
+}
