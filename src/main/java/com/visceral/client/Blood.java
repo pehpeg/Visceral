@@ -91,6 +91,13 @@ public final class Blood {
     }
 
     private static final List<Drop> DROPS = new ArrayList<>();
+    /** Droplets made while the others are being moved (a drop landing in water makes a cloud): added after. */
+    private static final List<Drop> NEW_DROPS = new ArrayList<>();
+    private static boolean moving;
+
+    private static void addDrop(Drop d) {
+        if (moving) NEW_DROPS.add(d); else DROPS.add(d);
+    }
     private static final ArrayDeque<Stain> STAINS = new ArrayDeque<>();
     /** Floor stains by the block they're on, so feet can find wet blood quickly. */
     private static final java.util.Map<Long, List<Stain>> FLOOR = new java.util.HashMap<>();
@@ -143,7 +150,7 @@ public final class Blood {
             d.vx = (float) (rx / rl) * sp;
             d.vy = (float) (ry / rl) * sp + 1.0f;
             d.vz = (float) (rz / rl) * sp;
-            DROPS.add(d);
+            addDrop(d);
         }
     }
 
@@ -155,7 +162,7 @@ public final class Blood {
         d.vz = (RAND.nextFloat() - 0.5f) * 0.2f;
         d.vy = -0.2f;
         if (t.style == Style.LIQUID || t.style == Style.SLIME) d.size = 0.035f + RAND.nextFloat() * 0.03f;   // drips are fat
-        DROPS.add(d);
+        addDrop(d);
     }
 
     private static Drop make(Type t, double x, double y, double z) {
@@ -265,7 +272,7 @@ public final class Blood {
         d.drag = 1.5f;
         d.life = 4f + RAND.nextFloat() * 3f;
         clouds++;
-        DROPS.add(d);
+        addDrop(d);
     }
 
     // ------------------------------------------------------------------ footprints
@@ -340,7 +347,7 @@ public final class Blood {
             d.grav = wet ? 1.2f : 0.5f;
             d.drag = 6f;
             d.life = t.style == Style.SPARKS ? 0.18f : 0.3f + RAND.nextFloat() * 0.3f;
-            DROPS.add(d);
+            addDrop(d);
         }
         if (wet) {
             // the fine spatter thrown off with the mist
@@ -354,7 +361,7 @@ public final class Blood {
                 d.vy = (RAND.nextFloat() - 0.3f) * sp;
                 d.vz = (float) Math.sin(a) * sp;
                 d.quiet = true;
-                DROPS.add(d);
+                addDrop(d);
             }
         }
     }
@@ -467,18 +474,13 @@ public final class Blood {
         if (mc.world == null || mc.isGamePaused()) return;
         clock += DT;
         World w = mc.world;
-        Iterator<Drop> it = DROPS.iterator();
-        while (it.hasNext()) {
-            Drop d = it.next();
-            d.age += DT;
-            if (d.age >= d.life || d.y < -64) { if (d.cloud) clouds--; it.remove(); continue; }
-            d.px = d.x; d.py = d.y; d.pz = d.z;
-            float f = (float) Math.exp(-d.drag * DT);
-            d.vx *= f; d.vy *= f; d.vz *= f;
-            d.vy -= d.grav * DT;
-            double nx = d.x + d.vx * DT, ny = d.y + d.vy * DT, nz = d.z + d.vz * DT;
-            if (d.puff) { d.x = nx; d.y = ny; d.z = nz; continue; }
-            if (collide(w, d, nx, ny, nz)) it.remove();
+        moving = true;
+        try {
+            moveDrops(w);
+        } finally {
+            moving = false;
+            DROPS.addAll(NEW_DROPS);
+            NEW_DROPS.clear();
         }
         // stains: fade out at the end of their life; light looked up again now and then; ceilings drip
         boolean relight = ((int) (clock / DT)) % 10 == 0;
@@ -533,6 +535,22 @@ public final class Blood {
     }
 
     private static final BlockPos.MutableBlockPos MPOS = new BlockPos.MutableBlockPos();
+
+    private static void moveDrops(World w) {
+        Iterator<Drop> it = DROPS.iterator();
+        while (it.hasNext()) {
+            Drop d = it.next();
+            d.age += DT;
+            if (d.age >= d.life || d.y < -64) { if (d.cloud) clouds--; it.remove(); continue; }
+            d.px = d.x; d.py = d.y; d.pz = d.z;
+            float f = (float) Math.exp(-d.drag * DT);
+            d.vx *= f; d.vy *= f; d.vz *= f;
+            d.vy -= d.grav * DT;
+            double nx = d.x + d.vx * DT, ny = d.y + d.vy * DT, nz = d.z + d.vz * DT;
+            if (d.puff) { d.x = nx; d.y = ny; d.z = nz; continue; }
+            if (collide(w, d, nx, ny, nz)) it.remove();
+        }
+    }
 
     /** Moves a droplet to (nx,ny,nz) in small steps; true if it hit something (and stained it). */
     private static boolean collide(World w, Drop d, double nx, double ny, double nz) {
