@@ -35,6 +35,17 @@ works in single player and on any server.
 - **Deaths that fit the kill.** Explosions blow creatures apart and fling the parts high. Fire chars
   them black and they smoke. A long fall splatters them flat. Arrows and other projectiles spray out
   the far side. Some sword kills take the head off or a limb, and the rest of the body drops.
+- **Your weapon matters.** Swords cut, axes take heads and limbs off more often, blunt weapons
+  (hammers, maces, clubs, pickaxes) crush instead of cut and can cave a head in, and spears and
+  daggers run creatures through. Modded weapons are sorted by what they're built on and by words in
+  their name ("warhammer", "glaive", "rapier"), so nothing needs setting up.
+- **Crits, sweeps and headshots.** Critical hits spray harder and can cut a creature in half. A
+  sweep that kills cuts it in half: the top half flies, the legs stand a moment and fold. An arrow
+  through the head pops it.
+- **Rain washes blood away** from anything out in the open; under a roof it stays. Bleeding bodies
+  knocked along the ground leave a smear.
+- **No vanilla puff.** Corpses go quietly instead of in a puff of smoke, and creatures that burn to
+  death crumble to ash and embers. (Modded creatures with their own death animation keep it.)
 - **Gibs you can kick.** In water they float and wash a red slick across the surface; in lava they
   char and burn up.
 - **Footprints.** Walk through blood and you leave red prints for a few steps, with a wet squelch.
@@ -43,6 +54,12 @@ works in single player and on any server.
   four levels in that blood's colour. It wears off slowly and washes off in water or rain. Works with
   any item, modded weapons included.
 - **Bodies hit the ground** with a thud.
+
+## Single player knows exactly what happened
+In single player the game's own server runs alongside, so Visceral asks it what killed something:
+the damage type, who did it (you, your pet, another mob), the weapon, a critical or a sweep, and
+where an arrow went in. On a multiplayer server it works out the same things from what it can see
+(and the server needs nothing installed).
 
 ## Modded creatures
 Nothing has to be set up per mod:

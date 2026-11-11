@@ -53,6 +53,7 @@ public final class Tracker {
         Type feetType;
         boolean leftFoot;
         boolean ash;                       // burnt to death without bursting: it crumbles to ash instead of the vanilla puff
+        boolean vanish;                    // its corpse goes quietly, without the vanilla puff of smoke
     }
 
     /** What hurt a creature, as best the client can tell. */
@@ -240,6 +241,8 @@ public final class Tracker {
         }
         if (!s.dead && (l.deathTime > 0 || l.getHealth() <= 0f) && (s.death == 0)) {
             s.dead = true;
+            s.vanish = !self && !(l instanceof EntityPlayer) && VisceralConfig.enabled && !VisceralConfig.extras.mild
+                    && l.isNonBoss() && vanillaDeath(l);
             float before = s.pending ? s.healthBefore : s.health;
             s.pending = false;
             if (!self) death(mc, l, s, t, Math.max(before, 1f));
@@ -249,6 +252,8 @@ public final class Tracker {
         if (!s.dead) bleed(mc, l, s, t, self);
         else {
             if (s.ash && l.deathTime >= 16 && !l.isDead) { s.ash = false; crumble(l, t); return; }
+            // the vanilla puff comes at 20: the corpse goes just before it
+            if (s.vanish && l.deathTime >= 19 && !l.isDead) { l.setDead(); return; }
             spurt(l, s, t);
             // a corpse hitting the ground
             if (l.deathTime == 12 && !t.none() && !Gibs.burst(l.getEntityId())) Sfx.body(t, l.posX, l.posY, l.posZ, l.width * l.height);
@@ -267,6 +272,43 @@ public final class Tracker {
         float len = (float) Math.min(1.6, sp * 1.4 + 0.25);
         float wid = MathHelper.clamp(l.width * 0.55f, 0.25f, 1.2f);
         Blood.smear(t, l.posX - mx * 0.5, l.posY + 0.1, l.posZ - mz * 0.5, mx, mz, len, wid);
+    }
+
+    private static final Map<Class<?>, Boolean> VANILLA_DEATH = new HashMap<>();
+    private static java.lang.reflect.Method deathUpdate;
+    private static boolean deathLooked;
+
+    /**
+     * It dies the vanilla way (falls over, puffs at 20 ticks): its class doesn't have a death of its
+     * own. Modded creatures with their own death animation keep it, puff and all.
+     */
+    private static boolean vanillaDeath(EntityLivingBase l) {
+        Boolean v = VANILLA_DEATH.get(l.getClass());
+        if (v != null) return v;
+        if (!deathLooked) {
+            deathLooked = true;
+            try {
+                deathUpdate = net.minecraftforge.fml.common.ObfuscationReflectionHelper.findMethod(EntityLivingBase.class, "onDeathUpdate", "func_70609_aI");
+            } catch (RuntimeException ex) {
+                deathUpdate = null;
+            }
+        }
+        boolean plain = deathUpdate != null;
+        if (plain) {
+            for (Class<?> c = l.getClass(); c != null && c != EntityLivingBase.class; c = c.getSuperclass()) {
+                try {
+                    c.getDeclaredMethod(deathUpdate.getName());
+                    plain = false;
+                    break;
+                } catch (NoSuchMethodException ignored) {
+                } catch (RuntimeException | LinkageError ex) {
+                    plain = false;
+                    break;
+                }
+            }
+        }
+        VANILLA_DEATH.put(l.getClass(), plain);
+        return plain;
     }
 
     private static boolean wet(Type t) {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+- Single player: the exact cause, killer (you or your pet), weapon, crit, sweep and arrow hit
+  point come from the game's own server.
+- Weapon-aware gore: axes take heads and limbs, blunt weapons crush and cave heads in, spears run
+  through. Modded weapons are recognised from what they are and their names.
+- Crits spray harder and can cut creatures in half; sweep kills cut them in half; arrow headshots
+  pop heads.
+- Rain washes stains away outdoors; bleeding bodies knocked along the ground smear.
+- Fire: your Fire Aspect or flame kill counts as yours; burnt corpses crumble to ash.
+- No vanilla death puff (except for creatures with their own death animation).
+- Removed the stump caps.
+
 ## 0.2.0
 - **Wounds:** hurt creatures get bloody in four levels as they lose health, on any model. Corpses
   and creatures missing a limb are soaked worst.
