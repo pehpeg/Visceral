@@ -38,17 +38,17 @@ public final class GuiVisceral extends GuiScreen {
             new Toggle("Death styles", () -> VisceralConfig.gibs.deathStyles, v -> VisceralConfig.gibs.deathStyles = v),
             new Toggle("Limb loss", () -> VisceralConfig.gibs.limbLoss, v -> VisceralConfig.gibs.limbLoss = v),
             new Toggle("Chunks", () -> VisceralConfig.gibs.chunks, v -> VisceralConfig.gibs.chunks = v),
-            new Toggle("Kickable gibs", () -> VisceralConfig.gibs.kickable, v -> VisceralConfig.gibs.kickable = v),
+            new Toggle("Kick gibs", () -> VisceralConfig.gibs.kickable, v -> VisceralConfig.gibs.kickable = v),
             new Toggle("Wounds", () -> VisceralConfig.extras.wounds, v -> VisceralConfig.extras.wounds = v),
             new Toggle("Stumps", () -> VisceralConfig.extras.stumps, v -> VisceralConfig.extras.stumps = v),
             new Toggle("Bleeding", () -> VisceralConfig.extras.bleeding, v -> VisceralConfig.extras.bleeding = v),
-            new Toggle("Blood pools", () -> VisceralConfig.extras.bloodPools, v -> VisceralConfig.extras.bloodPools = v),
+            new Toggle("Pools", () -> VisceralConfig.extras.bloodPools, v -> VisceralConfig.extras.bloodPools = v),
             new Toggle("Footprints", () -> VisceralConfig.extras.footprints, v -> VisceralConfig.extras.footprints = v),
             new Toggle("Flies", () -> VisceralConfig.extras.flies, v -> VisceralConfig.extras.flies = v),
-            new Toggle("Bloody weapon", () -> VisceralConfig.extras.bloodyWeapon, v -> VisceralConfig.extras.bloodyWeapon = v),
+            new Toggle("Weapon blood", () -> VisceralConfig.extras.bloodyWeapon, v -> VisceralConfig.extras.bloodyWeapon = v),
             new Toggle("Screen blood", () -> VisceralConfig.extras.screenBlood, v -> VisceralConfig.extras.screenBlood = v),
             new Toggle("Sounds", () -> VisceralConfig.extras.sounds, v -> VisceralConfig.extras.sounds = v),
-            new Toggle("Only your kills burst", () -> VisceralConfig.gibs.onlyYourKills, v -> VisceralConfig.gibs.onlyYourKills = v),
+            new Toggle("Only my kills", () -> VisceralConfig.gibs.onlyYourKills, v -> VisceralConfig.gibs.onlyYourKills = v),
             new Toggle("Players gib", () -> VisceralConfig.gibs.players, v -> VisceralConfig.gibs.players = v),
             new Toggle("Mild mode", () -> VisceralConfig.extras.mild, v -> VisceralConfig.extras.mild = v),
     };
@@ -63,44 +63,51 @@ public final class GuiVisceral extends GuiScreen {
     @Override
     public void initGui() {
         buttonList.clear();
-        int cx = width / 2, y = 34;
+        int cx = width / 2;
         // presets
         VisceralConfig.Preset[] ps = VisceralConfig.Preset.values();
         int pw = 62;
         int px = cx - (ps.length * (pw + 4) - 4) / 2;
         for (int i = 0; i < ps.length; i++) {
-            buttonList.add(new GuiButton(ID_PRESET + i, px + i * (pw + 4), y, pw, 20, presetLabel(ps[i])));
+            buttonList.add(new GuiButton(ID_PRESET + i, px + i * (pw + 4), 18, pw, 20, presetLabel(ps[i])));
         }
-        y += 28;
-        // switches, in three columns
-        int cols = 3, bw = 128, gap = 4;
-        int left = cx - (cols * (bw + gap) - gap) / 2;
+        // everything else on one grid: the switches, then the amounts and tools. Three wide columns
+        // when the screen is tall enough, four narrower ones when it isn't (a big GUI scale).
+        int extras = 10;
+        int cols = height >= 44 + (rows(toggles.length, 3) + rows(extras, 3)) * 22 + 26 ? 3 : 4;
+        int gap = 4;
+        int bw = Math.min(128, (width - 12) / cols - gap);
+        int step = 44 + (rows(toggles.length, cols) + rows(extras, cols)) * 22 + 26 <= height ? 22 : 21;
+        int left = cx - (cols * (bw + gap) - gap) / 2, top = 44;
         for (int i = 0; i < toggles.length; i++) {
-            buttonList.add(new GuiButton(ID_TOGGLE + i, left + (i % cols) * (bw + gap), y + (i / cols) * 22, bw, 20, toggleLabel(i)));
+            buttonList.add(new GuiButton(ID_TOGGLE + i, left + (i % cols) * (bw + gap), top + (i / cols) * step, bw, 20, toggleLabel(i)));
         }
-        y += ((toggles.length + cols - 1) / cols) * 22 + 6;
-        // amounts
-        int sw = 128;
-        buttonList.add(new GuiSlider(ID_SLIDER, left, y, sw, 20, "Blood: ", "x", 0.0, 3.0, VisceralConfig.blood.amount, true, true,
-                s -> { VisceralConfig.blood.amount = round(s.getValue()); custom(); }));
-        buttonList.add(new GuiSlider(ID_SLIDER + 1, left + bw + gap, y, sw, 20, "Gib force: ", "x", 0.0, 3.0, VisceralConfig.gibs.force, true, true,
-                s -> VisceralConfig.gibs.force = round(s.getValue())));
-        buttonList.add(new GuiSlider(ID_SLIDER + 2, left + 2 * (bw + gap), y, sw, 20, "Volume: ", "x", 0.0, 2.0, VisceralConfig.extras.volume, true, true,
-                s -> VisceralConfig.extras.volume = round(s.getValue())));
-        y += 22;
-        buttonList.add(new GuiSlider(ID_SLIDER + 3, left, y, sw, 20, "Stains last: ", "s", 10, 600, VisceralConfig.blood.stainSeconds, false, true,
-                s -> { VisceralConfig.blood.stainSeconds = s.getValueInt(); custom(); }));
-        buttonList.add(new GuiSlider(ID_SLIDER + 4, left + bw + gap, y, sw, 20, "Gibs last: ", "s", 3, 300, VisceralConfig.gibs.gibSeconds, false, true,
-                s -> { VisceralConfig.gibs.gibSeconds = s.getValueInt(); custom(); }));
-        buttonList.add(new GuiSlider(ID_SLIDER + 5, left + 2 * (bw + gap), y, sw, 20, "Burst chance: ", "%", 0, 100, VisceralConfig.gibs.gibChance * 100, false, true,
-                s -> VisceralConfig.gibs.gibChance = s.getValueInt() / 100.0));
-        y += 22;
-        buttonList.add(new GuiButton(ID_COLOUR, left, y, bw, 20, colourLabel()));
-        buttonList.add(new GuiButton(ID_RELOAD, left + bw + gap, y, bw, 20, "Reload blood list"));
-        buttonList.add(new GuiButton(ID_CLEAR, left + 2 * (bw + gap), y, bw, 20, "Clear all gore"));
-        y += 28;
-        buttonList.add(new GuiButton(ID_DETAILS, cx - 154, Math.min(y, height - 26), 150, 20, "Every setting..."));
-        buttonList.add(new GuiButton(ID_DONE, cx + 4, Math.min(y, height - 26), 150, 20, "Done"));
+        int y0 = top + rows(toggles.length, cols) * step;
+        int[] k = {0};
+        java.util.function.IntFunction<int[]> at = n -> new int[]{left + (n % cols) * (bw + gap), y0 + (n / cols) * step};
+        int[] p;
+        p = at.apply(k[0]++); buttonList.add(new GuiSlider(ID_SLIDER, p[0], p[1], bw, 20, "Blood: ", "x", 0.0, 3.0, VisceralConfig.blood.amount, true, true,
+                sl -> { VisceralConfig.blood.amount = round(sl.getValue()); custom(); }));
+        p = at.apply(k[0]++); buttonList.add(new GuiSlider(ID_SLIDER + 1, p[0], p[1], bw, 20, "Force: ", "x", 0.0, 3.0, VisceralConfig.gibs.force, true, true,
+                sl -> VisceralConfig.gibs.force = round(sl.getValue())));
+        p = at.apply(k[0]++); buttonList.add(new GuiSlider(ID_SLIDER + 2, p[0], p[1], bw, 20, "Volume: ", "x", 0.0, 2.0, VisceralConfig.extras.volume, true, true,
+                sl -> VisceralConfig.extras.volume = round(sl.getValue())));
+        p = at.apply(k[0]++); buttonList.add(new GuiSlider(ID_SLIDER + 3, p[0], p[1], bw, 20, "Stains: ", "s", 10, 600, VisceralConfig.blood.stainSeconds, false, true,
+                sl -> { VisceralConfig.blood.stainSeconds = sl.getValueInt(); custom(); }));
+        p = at.apply(k[0]++); buttonList.add(new GuiSlider(ID_SLIDER + 4, p[0], p[1], bw, 20, "Gibs: ", "s", 3, 300, VisceralConfig.gibs.gibSeconds, false, true,
+                sl -> { VisceralConfig.gibs.gibSeconds = sl.getValueInt(); custom(); }));
+        p = at.apply(k[0]++); buttonList.add(new GuiSlider(ID_SLIDER + 5, p[0], p[1], bw, 20, "Burst: ", "%", 0, 100, VisceralConfig.gibs.gibChance * 100, false, true,
+                sl -> VisceralConfig.gibs.gibChance = sl.getValueInt() / 100.0));
+        p = at.apply(k[0]++); buttonList.add(new GuiButton(ID_COLOUR, p[0], p[1], bw, 20, colourLabel()));
+        p = at.apply(k[0]++); buttonList.add(new GuiButton(ID_RELOAD, p[0], p[1], bw, 20, "Reload list"));
+        p = at.apply(k[0]++); buttonList.add(new GuiButton(ID_CLEAR, p[0], p[1], bw, 20, "Clear gore"));
+        p = at.apply(k[0]++); buttonList.add(new GuiButton(ID_DETAILS, p[0], p[1], bw, 20, "All settings..."));
+        int yd = Math.min(y0 + rows(extras, cols) * step + 4, height - 22);
+        buttonList.add(new GuiButton(ID_DONE, cx - 75, yd, 150, 20, "Done"));
+    }
+
+    private static int rows(int n, int cols) {
+        return (n + cols - 1) / cols;
     }
 
     private static double round(double v) {
@@ -123,8 +130,8 @@ public final class GuiVisceral extends GuiScreen {
 
     private static String colourLabel() {
         String c = VisceralConfig.extras.bloodColor == null ? "" : VisceralConfig.extras.bloodColor.trim();
-        for (int i = 0; i < COLOURS.length; i++) if (COLOURS[i].equalsIgnoreCase(c)) return "Blood colour: " + COLOUR_NAMES[i];
-        return "Blood colour: " + c;
+        for (int i = 0; i < COLOURS.length; i++) if (COLOURS[i].equalsIgnoreCase(c)) return "Colour: " + COLOUR_NAMES[i];
+        return "Colour: " + c;
     }
 
     @Override
@@ -147,7 +154,7 @@ public final class GuiVisceral extends GuiScreen {
             b.displayString = colourLabel();
         } else if (b.id == ID_RELOAD) {
             BloodTypes.reload();
-            b.displayString = "Blood list reloaded";
+            b.displayString = "Reloaded";
         } else if (b.id == ID_CLEAR) {
             Blood.clearAll();
             Gibs.clearAll();
@@ -175,8 +182,7 @@ public final class GuiVisceral extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
-        drawCenteredString(fontRenderer, "Visceral " + Visceral.VERSION, width / 2, 10, 0xE8C4C4);
-        drawCenteredString(fontRenderer, "§7Preset (sets the amounts below; changing an amount makes it Custom)", width / 2, 22, 0xA0A0A0);
+        drawCenteredString(fontRenderer, "Visceral " + Visceral.VERSION, width / 2, 6, 0xE8C4C4);
         super.drawScreen(mouseX, mouseY, partialTicks);
     }
 

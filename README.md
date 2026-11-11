@@ -100,7 +100,7 @@ Changes apply at once.
   and buttons to reload the blood list and clear all gore.
 - **Mild mode:** no red at all. Creatures puff into dust and bits instead, and wounds, flies and the
   bloody weapon are off. Good for streams and younger players.
-- **Every setting...** opens the full list: the blood amount, stains and their lifetime and limits,
+- **All settings...** opens the full list: the blood amount, stains and their lifetime and limits,
   the chance a death bursts, only your kills, chunk count, force, limb loss (the damage share
   needed, and the chance), whether players gib, bleeding and where it starts, screen blood
   strength, volume and the rest.
