@@ -86,6 +86,30 @@ public final class Gibs {
         final List<Integer> rootIndex = new ArrayList<>();    // which top-level piece (for layers with the same model shape)
         boolean arm;                                          // an arm: its held item goes too
         ModelBase model;
+        /** Where each lost part joined the body, around the creature (as Group.sx..), and the cut's size: {x, y, z, w, d}. */
+        final List<float[]> stumps = new ArrayList<>();
+    }
+
+    /**
+     * Where a point given around a creature (its turn taken out, as Group.sx/sy/sz) is in the world
+     * right now: turned with the creature, and tipped over with it as a corpse falls.
+     * Returns {x, y, z, turn in degrees}.
+     */
+    static double[] joint(EntityLivingBase e, double sx, double sy, double sz, float pt) {
+        float yaw = e.prevRenderYawOffset + net.minecraft.util.math.MathHelper.wrapDegrees(e.renderYawOffset - e.prevRenderYawOffset) * pt;
+        double x = sx, y = sy, z = sz;
+        if (e.deathTime > 0) {
+            // RenderLivingBase tips a dying creature over onto its side
+            float f = Math.min(1f, (float) Math.sqrt(Math.max(0f, (e.deathTime + pt - 1f) / 20f * 1.6f)));
+            double a = Math.toRadians(f * 90f), c = Math.cos(a), sn = Math.sin(a);
+            double nx = x * c - y * sn, ny = x * sn + y * c;
+            x = nx; y = ny;
+        }
+        double t = Math.toRadians(180f - yaw), c = Math.cos(t), sn = Math.sin(t);
+        double wx = x * c + z * sn, wz = -x * sn + z * c;
+        double ex = e.lastTickPosX + (e.posX - e.lastTickPosX) * pt, ey = e.lastTickPosY + (e.posY - e.lastTickPosY) * pt,
+                ez = e.lastTickPosZ + (e.posZ - e.lastTickPosZ) * pt;
+        return new double[]{ex + wx, ey + y, ez + wz, 180f - yaw};
     }
 
     static boolean burst(int id) {
@@ -150,6 +174,8 @@ public final class Gibs {
             lost.bipedSlots.add(slot);
             if (slot == 3 || slot == 4) lost.arm = true;
         }
+        float sxl = ModelParts.len(g.lin[0], g.lin[3], g.lin[6]), szl = ModelParts.len(g.lin[2], g.lin[5], g.lin[8]);
+        lost.stumps.add(new float[]{(float) g.sx, (float) g.sy, (float) g.sz, 2f * g.hx * sxl * 0.85f, 2f * g.hz * szl * 0.85f});
         Gib gb = fromGroup(g, cap, t);
         gb.whole = true;
         double ox = g.wx - e.posX, oz = g.wz - e.posZ;
@@ -498,7 +524,7 @@ public final class Gibs {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderWorld(RenderWorldLastEvent event) {
         if (!HIDDEN.isEmpty() || !REMOVED.isEmpty()) restore();
-        if (GIBS.isEmpty()) return;
+        if (GIBS.isEmpty() && (LOST.isEmpty() || !stumpsOn())) return;
         float bx = OpenGlHelper.lastBrightnessX, by = OpenGlHelper.lastBrightnessY;
         GlGuard.push();
         GlGuard.worldLit();
@@ -563,10 +589,21 @@ public final class Gibs {
                 if (bound != g.tex) { mc.getTextureManager().bindTexture(g.tex); bound = g.tex; }
                 GlStateManager.enableTexture2D();
                 GlStateManager.color(1f, 1f, 1f, 1f);
+                boolean bloody = Wounds.on() && !g.type.glows() && !g.type.none()
+                        && Wounds.begin(g.type.color, 4, System.identityHashCode(g));
                 try {
                     ModelParts.drawGroup(g.group, g.whole);
+                    if (bloody) { Wounds.end(); bloody = false; }
+                    // the torn end: raw flesh and bone where it came off
+                    if (stumpsOn() && g.type.stains()) {
+                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f);
+                        mc.getTextureManager().bindTexture(g.tex);
+                        bound = g.tex;
+                    }
                 } catch (RuntimeException ex) {
                     g.life = g.age;   // a model that won't draw like this: drop this gib
+                } finally {
+                    if (bloody) Wounds.end();
                 }
             } else {
                 GlStateManager.disableTexture2D();
@@ -577,6 +614,63 @@ public final class Gibs {
             GlStateManager.popMatrix();
         }
         GlStateManager.color(1f, 1f, 1f, 1f);
+        if (stumpsOn() && !LOST.isEmpty()) {
+            for (Map.Entry<Integer, Lost> en : LOST.entrySet()) {
+                Entity ent = w.getEntityByID(en.getKey());
+                if (!(ent instanceof EntityLivingBase) || BURST.contains(en.getKey())) continue;
+                EntityLivingBase e = (EntityLivingBase) ent;
+                if (!BloodTypes.of(e).stains()) continue;
+                for (float[] st : en.getValue().stumps) {
+                    double[] p = joint(e, st[0], st[1], st[2], pt);
+                    bp.setPos(p[0], p[1], p[2]);
+                    int light = w.getCombinedLight(bp, 0);
+                    OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light % 65536, light / 65536);
+                    GlStateManager.pushMatrix();
+                    GlStateManager.translate(p[0] - cx, p[1] - cy, p[2] - cz);
+                    GlStateManager.rotate((float) p[3], 0f, 1f, 0f);
+                    if (e.deathTime > 0) {
+                        float f = Math.min(1f, (float) Math.sqrt(Math.max(0f, (e.deathTime + pt - 1f) / 20f * 1.6f)));
+                        GlStateManager.rotate(f * 90f, 0f, 0f, 1f);
+                    }
+                    cap(st[3], st[4]);
+                    GlStateManager.popMatrix();
+                }
+            }
+        }
+    }
+
+    private static final ResourceLocation FLESH = new ResourceLocation(Visceral.MODID, "textures/fx/flesh.png");
+
+    static boolean stumpsOn() {
+        return VisceralConfig.enabled && VisceralConfig.extras.stumps;
+    }
+
+    /** The cut end of a limb: a thin slab of raw flesh with bone in the middle, w x d blocks, at the joint. */
+    private static void cap(float w, float d) {
+        w = Math.max(0.08f, w);
+        d = Math.max(0.08f, d);
+        float hw = w * 0.5f, hd = d * 0.5f, h = Math.min(0.05f, Math.min(w, d) * 0.18f);
+        Minecraft.getMinecraft().getTextureManager().bindTexture(FLESH);
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1f, 1f, 1f, 1f);
+        Tessellator tess = Tessellator.getInstance();
+        BufferBuilder b = tess.getBuffer();
+        b.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_NORMAL);
+        // both flat faces show the cut (whichever way the part hangs); the edges show the fatty rim
+        b.pos(-hw, h, -hd).tex(0, 0).normal(0, 1, 0).endVertex(); b.pos(-hw, h, hd).tex(0, 1).normal(0, 1, 0).endVertex();
+        b.pos(hw, h, hd).tex(1, 1).normal(0, 1, 0).endVertex(); b.pos(hw, h, -hd).tex(1, 0).normal(0, 1, 0).endVertex();
+        b.pos(-hw, -h, -hd).tex(0, 0).normal(0, -1, 0).endVertex(); b.pos(hw, -h, -hd).tex(1, 0).normal(0, -1, 0).endVertex();
+        b.pos(hw, -h, hd).tex(1, 1).normal(0, -1, 0).endVertex(); b.pos(-hw, -h, hd).tex(0, 1).normal(0, -1, 0).endVertex();
+        float e0 = 0.02f, e1 = 0.12f;
+        b.pos(hw, -h, -hd).tex(e0, 0).normal(1, 0, 0).endVertex(); b.pos(hw, h, -hd).tex(e1, 0).normal(1, 0, 0).endVertex();
+        b.pos(hw, h, hd).tex(e1, 1).normal(1, 0, 0).endVertex(); b.pos(hw, -h, hd).tex(e0, 1).normal(1, 0, 0).endVertex();
+        b.pos(-hw, -h, -hd).tex(e0, 0).normal(-1, 0, 0).endVertex(); b.pos(-hw, -h, hd).tex(e0, 1).normal(-1, 0, 0).endVertex();
+        b.pos(-hw, h, hd).tex(e1, 1).normal(-1, 0, 0).endVertex(); b.pos(-hw, h, -hd).tex(e1, 0).normal(-1, 0, 0).endVertex();
+        b.pos(-hw, -h, hd).tex(0, e0).normal(0, 0, 1).endVertex(); b.pos(hw, -h, hd).tex(1, e0).normal(0, 0, 1).endVertex();
+        b.pos(hw, h, hd).tex(1, e1).normal(0, 0, 1).endVertex(); b.pos(-hw, h, hd).tex(0, e1).normal(0, 0, 1).endVertex();
+        b.pos(-hw, -h, -hd).tex(0, e0).normal(0, 0, -1).endVertex(); b.pos(-hw, h, -hd).tex(0, e1).normal(0, 0, -1).endVertex();
+        b.pos(hw, h, -hd).tex(1, e1).normal(0, 0, -1).endVertex(); b.pos(hw, -h, -hd).tex(1, e0).normal(0, 0, -1).endVertex();
+        tess.draw();
     }
 
     /** A plain lit cube s blocks across, centred. */

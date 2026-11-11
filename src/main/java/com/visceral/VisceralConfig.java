@@ -94,6 +94,10 @@ public class VisceralConfig {
         @Config.RangeDouble(min = 0.0, max = 1.0)
         public double limbLossChance = 0.4;
 
+        @Config.Comment({"Not every death is a burst: some creatures lose their head (the neck pumping as they fall),",
+                "some a limb, and fall with a pool spreading under them. Off: every gib death is a burst."})
+        public boolean deathStyles = true;
+
         @Config.Comment("Players gib and lose limbs too (other players; never yourself in first person).")
         public boolean players = true;
     }
@@ -105,6 +109,12 @@ public class VisceralConfig {
         @Config.Comment("Creatures start dripping below this share (0-1) of their max health.")
         @Config.RangeDouble(min = 0.0, max = 1.0)
         public double bleedBelow = 0.5;
+
+        @Config.Comment("Hurt creatures get bloody: blood soaks into their skin, fur and armour, more the more hurt they are.")
+        public boolean wounds = true;
+
+        @Config.Comment("Raw flesh and bone where a limb or head came off: on the creature and on the part that flew off.")
+        public boolean stumps = true;
 
         @Config.Comment("A creature that dies without bursting leaves a pool of blood spreading under it.")
         public boolean bloodPools = true;

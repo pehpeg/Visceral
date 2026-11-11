@@ -150,7 +150,7 @@ public final class Blood {
         d.tile = T_DROP;
         d.streak = true;
         d.stains = t.stains() && VisceralConfig.blood.stains;
-        d.grav = 18f;
+        d.grav = 9.8f;   // real gravity: a block is a metre
         d.drag = 1.2f;
         d.life = 4f;
         // mostly a fine spray, some medium drops, a few fat ones
@@ -162,7 +162,7 @@ public final class Blood {
         switch (t.style) {
             case SLIME:
                 d.size = Math.max(d.size, 0.03f) * 1.6f;
-                d.grav = 15f;
+                d.grav = 9.8f;
                 d.drag = 1.0f;
                 d.alpha = 0.9f;
                 break;

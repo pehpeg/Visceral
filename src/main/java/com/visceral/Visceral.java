@@ -35,7 +35,7 @@ public class Visceral {
         BloodTypes.init(new File(event.getModConfigurationDirectory(), "visceral-blood.json"));
         // F3+T reloads the blood list, and Visceral's textures come back with the rest
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
-                .registerReloadListener((IResourceManagerReloadListener) rm -> BloodTypes.reload());
+                .registerReloadListener((IResourceManagerReloadListener) rm -> { BloodTypes.reload(); com.visceral.client.Wounds.reload(); });
         // the scripted in-game test (only in test builds, see addon.gradle)
         if (Boolean.getBoolean("visceral.autotest")) {
             try {

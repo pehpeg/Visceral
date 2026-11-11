@@ -122,6 +122,7 @@ public final class Tracker {
                 Map.Entry<Integer, State> en = it.next();
                 if (tick - en.getValue().seen > 40) {
                     Gibs.forget(en.getKey());
+                    Wounds.forget(en.getKey());
                     it.remove();
                 }
             }
@@ -144,11 +145,12 @@ public final class Tracker {
             s.dead = true;
             float before = s.pending ? s.healthBefore : s.health;
             s.pending = false;
-            if (!self) death(mc, l, t, Math.max(before, 1f));
+            if (!self) death(mc, l, s, t, Math.max(before, 1f));
             else if (VisceralConfig.extras.screenBlood && wet(t)) ScreenBlood.hurt(t.color, 2.5f);
             return;
         }
         if (!s.dead) bleed(mc, l, s, t, self);
+        else spurt(l, s, t);   // a corpse's fresh stump (a cut neck) keeps pumping as it falls
     }
 
     private static boolean wet(Type t) {
@@ -237,7 +239,10 @@ public final class Tracker {
 
     // ------------------------------------------------------------------ deaths
 
-    private static void death(Minecraft mc, EntityLivingBase l, Type t, float lastHealth) {
+    /** For the in-game test: forces the next deaths' style (0 burst, 1 decapitation, 2 limb and corpse), -1 = random. */
+    static int testStyle = -1;
+
+    private static void death(Minecraft mc, EntityLivingBase l, State s, Type t, float lastHealth) {
         if (t.none()) return;
         Attack a = mine(l.getEntityId(), 1.2f);
         double[] d = direction(mc, l, a);
@@ -252,6 +257,10 @@ public final class Tracker {
         if (gib) {
             float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k));
             ModelParts.Capture cap = ModelParts.capture(l, 1f);
+            // not every death is a burst: some lose their head, some a limb, and fall
+            int style = testStyle >= 0 ? testStyle : !VisceralConfig.gibs.deathStyles ? 0
+                    : Blood.RAND.nextFloat() < 0.55f ? 0 : Blood.RAND.nextFloat() < 0.6f ? 1 : 2;
+            if (style > 0 && cap != null && partDeath(mc, l, s, t, cap, style, d, force, size)) return;
             boolean parts = Gibs.burst(l, cap, t, d[0], d[1], force);
             if (VisceralConfig.gibs.chunks || !parts) {
                 int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f));
@@ -265,6 +274,9 @@ public final class Tracker {
             Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.min(4f, Math.max(l.width * 2.4f, 1.2f)), 0.12f, Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
             Sfx.burst(t, cx, cy, cz);
             if (a != null && wet(t) && l.getDistanceSq(mc.player) < 3.2 * 3.2 && mc.gameSettings.thirdPersonView == 0) ScreenBlood.spray(t.color, k);
+            // the body is gone: take it out of the world now, so there's no corpse for another mod to
+            // draw, no shadow left behind, and no puff of smoke when it would have vanished
+            if (!(l instanceof EntityPlayer)) l.setDead();
         } else {
             // dies like vanilla, with a last spurt and a pool spreading under it
             Blood.spray(t, cx, cy, cz, d[0], 0.5, d[1], Math.round((14 + 10 * size) * amt), 3f, 0.6f);
@@ -274,25 +286,52 @@ public final class Tracker {
         }
     }
 
+    /**
+     * A death that isn't a burst: the head comes off (style 1) or a limb (style 2), the rest falls
+     * like a normal death, soaked, the stump pumping, a pool spreading. False if it has no such part.
+     */
+    private static boolean partDeath(Minecraft mc, EntityLivingBase l, State s, Type t, ModelParts.Capture cap, int style,
+                                     double[] d, float force, float size) {
+        ModelParts.Group pick = null;
+        for (ModelParts.Group g : cap.groups) {
+            if (Gibs.isLost(l.getEntityId(), g)) continue;
+            if (style == 1 ? g.head : g.limb) {
+                if (pick == null || Blood.RAND.nextBoolean()) pick = g;
+            }
+        }
+        if (pick == null) return false;
+        Gibs.tearOff(l, cap, pick, t, d[0], d[1], force * (style == 1 ? 1.25f : 1f));
+        s.stump = pick;
+        s.spurtUntil = clock + (style == 1 ? 2.6f : 2f);
+        float amt = Blood.amount();
+        Blood.spray(t, pick.wx, pick.wy, pick.wz, d[0], 1.2, d[1], Math.round((40 + 15 * size) * amt), 4.5f, 0.55f);
+        Blood.mist(t, pick.wx, pick.wy, pick.wz, 1.4f);
+        Sfx.tear(t, pick.wx, pick.wy, pick.wz);
+        if (VisceralConfig.extras.bloodPools) {
+            Blood.groundStain(t, l.posX, l.posY + 0.1, l.posZ, Math.min(3.5f, Math.max(1f, l.width * 2.1f)), 3.5f, Blood.T_POOL);
+        }
+        return true;
+    }
+
+    /** A fresh stump spurts with each heartbeat (on the living and on a falling corpse). */
+    private static void spurt(EntityLivingBase l, State s, Type t) {
+        if (s.stump == null || clock >= s.spurtUntil || t.none() || !(t.stains() || t.style == Style.ECTO)) return;
+        float beat = (clock * 2.4f) % 1f;
+        if (beat >= 0.25f) return;
+        double[] p = Gibs.joint(l, s.stump.sx, s.stump.sy, s.stump.sz, 1f);
+        double ox = p[0] - l.posX, oz = p[2] - l.posZ;
+        double ol = Math.sqrt(ox * ox + oz * oz);
+        if (ol < 1e-3) { ox = 0; oz = 0; ol = 1; }
+        float fade = (s.spurtUntil - clock) / 3f;
+        Blood.spray(t, p[0], p[1], p[2], ox / ol, 0.6, oz / ol, Math.max(1, Math.round(4 * Blood.amount() * fade)), 3f * fade + 0.8f, 0.25f);
+    }
+
     // ------------------------------------------------------------------ bleeding
 
     private static void bleed(Minecraft mc, EntityLivingBase l, State s, Type t, boolean self) {
         if (t.none() || (self && mc.gameSettings.thirdPersonView == 0)) return;
         if (!(t.stains() || t.style == Style.ECTO)) return;
-        // a fresh stump spurts with each heartbeat
-        if (s.stump != null && clock < s.spurtUntil) {
-            float beat = (clock * 2.4f) % 1f;
-            if (beat < 0.25f) {
-                float theta = 180f - l.renderYawOffset;
-                float[] r = ModelParts.apply(ModelParts.rotY(theta), (float) s.stump.sx, (float) s.stump.sy, (float) s.stump.sz);
-                double x = l.posX + r[0], y = l.posY + r[1], z = l.posZ + r[2];
-                double ox = r[0], oz = r[2];
-                double ol = Math.sqrt(ox * ox + oz * oz);
-                if (ol < 1e-3) { ox = 0; oz = 0; ol = 1; }
-                float fade = (s.spurtUntil - clock) / 3f;
-                Blood.spray(t, x, y, z, ox / ol, 0.5, oz / ol, Math.max(1, Math.round(3 * Blood.amount() * fade)), 2.5f * fade + 0.8f, 0.25f);
-            }
-        }
+        spurt(l, s, t);
         if (!VisceralConfig.extras.bleeding) return;
         float max = Math.max(1f, l.getMaxHealth());
         float frac = l.getHealth() / max;
@@ -303,8 +342,8 @@ public final class Tracker {
         if (maimed) p = Math.max(p, 0.2f);
         if (Blood.RAND.nextFloat() >= p * Math.min(2f, Blood.amount())) return;
         if (maimed && s.stump != null && Blood.RAND.nextBoolean()) {
-            float[] r = ModelParts.apply(ModelParts.rotY(180f - l.renderYawOffset), (float) s.stump.sx, (float) s.stump.sy, (float) s.stump.sz);
-            Blood.drip(t, l.posX + r[0], l.posY + r[1], l.posZ + r[2]);
+            double[] j = Gibs.joint(l, s.stump.sx, s.stump.sy, s.stump.sz, 1f);
+            Blood.drip(t, j[0], j[1], j[2]);
         } else {
             Blood.drip(t, l.posX + (Blood.RAND.nextDouble() - 0.5) * l.width,
                     l.posY + l.height * (0.3 + Blood.RAND.nextDouble() * 0.45),

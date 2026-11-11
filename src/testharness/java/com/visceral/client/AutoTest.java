@@ -15,8 +15,6 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
-import net.minecraft.init.Items;
-import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.EnumHand;
@@ -167,8 +165,7 @@ public final class AutoTest {
             w.setBlockState(new BlockPos(-3, baseY + 3, 3), Blocks.GLOWSTONE.getDefaultState());
             w.setBlockState(new BlockPos(3, baseY + 3, 3), Blocks.GLOWSTONE.getDefaultState());
             EntityPlayerMP p = splayer();
-            p.inventory.setInventorySlotContents(0, new ItemStack(Items.DIAMOND_SWORD));
-            p.inventory.currentItem = 0;
+            p.inventory.currentItem = 0;   // bare hands: small hits, so the limb step comes before the kill
             p.connection.setPlayerLocation(0.5, baseY, -0.2, 0f, 8f);
         }));
         t += 40;
@@ -176,7 +173,7 @@ public final class AutoTest {
             final int idx = i;
             final String id = MOBS[i];
             final String tag = String.format("%02d_%s", i + 1, id.substring(id.indexOf(':') + 1));
-            at(t, () -> spawn(id));
+            at(t, () -> { spawn(id); Tracker.testStyle = idx % 3; });
             at(t + 20, () -> { inspect(tag); shot(tag + "_0_standing"); });
             at(t + 25, AutoTest::attack);
             at(t + 28, () -> shot(tag + "_1_hit"));
