@@ -74,6 +74,7 @@ public final class Gibs {
         boolean ground, splatted, pooled;
         float chunk;                 // chunk size (blocks)
         int color;
+        int skin = -2;               // the part's own skin colour, for its cut end (-2: not looked up yet)
     }
 
     private static final List<Gib> GIBS = new ArrayList<>();
@@ -89,7 +90,7 @@ public final class Gibs {
         final List<Integer> rootIndex = new ArrayList<>();    // which top-level piece (for layers with the same model shape)
         boolean arm;                                          // an arm: its held item goes too
         ModelBase model;
-        /** Where each lost part joined the body, around the creature (as Group.sx..), and the cut's size: {x, y, z, w, d}. */
+        /** Where each lost part joined the body, around the creature (as Group.sx..), the cut's size, bone, and the part's skin colour: {x, y, z, w, d, bone, skin}. */
         final List<float[]> stumps = new ArrayList<>();
     }
 
@@ -191,7 +192,7 @@ public final class Gibs {
         }
         float sxl = ModelParts.len(g.lin[0], g.lin[3], g.lin[6]), szl = ModelParts.len(g.lin[2], g.lin[5], g.lin[8]);
         lost.stumps.add(new float[]{(float) g.sx, (float) g.sy, (float) g.sz, 2f * g.hx * sxl * 0.85f, 2f * g.hz * szl * 0.85f,
-                g.limb || g.head ? 1f : 0f});
+                g.limb || g.head ? 1f : 0f, ModelParts.partColor(cap.tex, g)});
         Gib gb = fromGroup(g, cap, t);
         gb.whole = true;
         double ox = g.wx - e.posX, oz = g.wz - e.posZ;
@@ -733,7 +734,8 @@ public final class Gibs {
                     // the torn end: raw flesh and bone where it came off
                     GlStateManager.color(1f, 1f, 1f, 1f);
                     if (close && stumpsOn() && g.type.stains() && !g.charred) {
-                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head, ModelParts.averageColor(g.tex));
+                        if (g.skin == -2) g.skin = ModelParts.partColor(g.tex, g.group);
+                        cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head, g.skin);
                         mc.getTextureManager().bindTexture(g.tex);
                         bound = g.tex;
                     }
@@ -757,7 +759,6 @@ public final class Gibs {
                 if (!(ent instanceof EntityLivingBase) || BURST.contains(en.getKey())) continue;
                 EntityLivingBase e = (EntityLivingBase) ent;
                 if (!BloodTypes.of(e).stains()) continue;
-                int skin = ModelParts.averageColor(e);
                 for (float[] st : en.getValue().stumps) {
                     double[] p = joint(e, st[0], st[1], st[2], pt);
                     bp.setPos(p[0], p[1], p[2]);
@@ -770,7 +771,7 @@ public final class Gibs {
                         float f = Math.min(1f, (float) Math.sqrt(Math.max(0f, (e.deathTime + pt - 1f) / 20f * 1.6f)));
                         GlStateManager.rotate(f * 90f, 0f, 0f, 1f);
                     }
-                    cap(st[3], st[4], st[5] > 0.5f, skin);
+                    cap(st[3], st[4], st[5] > 0.5f, (int) st[6]);
                     GlStateManager.popMatrix();
                 }
             }

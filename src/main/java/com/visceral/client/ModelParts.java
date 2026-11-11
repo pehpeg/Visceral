@@ -41,7 +41,7 @@ import java.util.Set;
  * head; the parts that swing when it walks are its limbs; the one in the middle of its mass is its
  * body. Found by posing the model a few different ways and watching what moves.
  */
-final class ModelParts {
+public final class ModelParts {
     private ModelParts() {}
 
     static final float S = 0.0625f;
@@ -463,30 +463,121 @@ final class ModelParts {
         }
     }
 
+    /** A texture's pixels, read once: {width, height, argb...}; an empty array if it can't be read. */
+    private static final Map<ResourceLocation, int[]> PIXELS = new java.util.HashMap<>();
+
+    /** After a resource reload: textures are read again (a resource pack may have changed them). */
+    public static void forgetTextures() {
+        PIXELS.clear();
+        AVG.clear();
+    }
+
+    private static int[] pixels(ResourceLocation tex) {
+        int[] px = PIXELS.get(tex);
+        if (px != null) return px;
+        px = new int[0];
+        try (java.io.InputStream in = Minecraft.getMinecraft().getResourceManager().getResource(tex).getInputStream()) {
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(in);
+            int w = img.getWidth(), h = img.getHeight();
+            if (w * h <= 2048 * 2048) {
+                px = new int[2 + w * h];
+                px[0] = w; px[1] = h;
+                img.getRGB(0, 0, w, h, px, 2, w);
+            }
+        } catch (Throwable t) {
+            // a texture that isn't a resource (a downloaded skin) or can't be read
+        }
+        PIXELS.put(tex, px);
+        return px;
+    }
+
     /** The average colour of a texture's opaque pixels, -1 if unknown. Worked out once per texture. */
     static int averageColor(ResourceLocation tex) {
         if (tex == null) return -1;
+        Integer c = AVG.get(tex);
+        if (c != null) return c;
+        int[] px = pixels(tex);
+        int out = -1;
+        if (px.length > 2) {
+            int w = px[0], h = px[1];
+            out = average(px, 0, 0, w, h, Math.max(1, w / 64));
+        }
+        AVG.put(tex, out);
+        return out;
+    }
+
+    private static long[] acc = new long[4];
+
+    /** The average of the opaque pixels in [x0,x1) x [y0,y1), -1 if none. */
+    private static int average(int[] px, int x0, int y0, int x1, int y1, int step) {
+        acc[0] = acc[1] = acc[2] = acc[3] = 0;
+        add(px, x0, y0, x1, y1, step);
+        return result();
+    }
+
+    private static void add(int[] px, int x0, int y0, int x1, int y1, int step) {
+        int w = px[0], h = px[1];
+        x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(w, x1); y1 = Math.min(h, y1);
+        for (int y = y0; y < y1; y += step) {
+            for (int x = x0; x < x1; x += step) {
+                int p = px[2 + y * w + x];
+                if ((p >>> 24) < 128) continue;
+                acc[0] += (p >> 16) & 255; acc[1] += (p >> 8) & 255; acc[2] += p & 255; acc[3]++;
+            }
+        }
+    }
+
+    private static int result() {
+        long n = acc[3];
+        return n == 0 ? -1 : (int) (acc[0] / n) << 16 | (int) (acc[1] / n) << 8 | (int) (acc[2] / n);
+    }
+
+    private static java.lang.reflect.Field quadsField;
+    private static boolean quadsLooked;
+
+    /** ModelBox's faces (a private field, found by its type so it works under any mapping). */
+    private static net.minecraft.client.model.TexturedQuad[] quads(ModelBox box) throws IllegalAccessException {
+        if (!quadsLooked) {
+            quadsLooked = true;
+            for (java.lang.reflect.Field f : ModelBox.class.getDeclaredFields()) {
+                if (f.getType() == net.minecraft.client.model.TexturedQuad[].class) { f.setAccessible(true); quadsField = f; }
+            }
+        }
+        return quadsField == null ? null : (net.minecraft.client.model.TexturedQuad[]) quadsField.get(box);
+    }
+
+    /**
+     * The colour of one body part's own skin: the average of the texture where that part's boxes are
+     * painted (a zombie's head is green even though its texture is mostly shirt). Falls back to the
+     * whole texture's average; -1 if unknown.
+     */
+    static int partColor(ResourceLocation tex, Group g) {
+        if (tex == null || g == null) return -1;
         try {
-            Integer c = AVG.get(tex);
-            if (c != null) return c;
-            int out = -1;
-            try (java.io.InputStream in = Minecraft.getMinecraft().getResourceManager().getResource(tex).getInputStream()) {
-                java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(in);
-                long sr = 0, sg = 0, sb = 0, n = 0;
-                int step = Math.max(1, img.getWidth() / 64);
-                for (int y = 0; y < img.getHeight(); y += step) {
-                    for (int x = 0; x < img.getWidth(); x += step) {
-                        int p = img.getRGB(x, y);
-                        if ((p >>> 24) < 128) continue;
-                        sr += (p >> 16) & 255; sg += (p >> 8) & 255; sb += p & 255; n++;
+            int[] px = pixels(tex);
+            if (px.length <= 2) return -1;
+            int w = px[0], h = px[1];
+            acc[0] = acc[1] = acc[2] = acc[3] = 0;
+            for (ModelRenderer mr : g.roots) {
+                if (mr.cubeList == null) continue;
+                for (ModelBox box : mr.cubeList) {
+                    net.minecraft.client.model.TexturedQuad[] qs = quads(box);
+                    if (qs == null) return averageColor(tex);
+                    for (net.minecraft.client.model.TexturedQuad q : qs) {
+                        if (q == null || q.vertexPositions == null) continue;
+                        float u0 = 1, v0 = 1, u1 = 0, v1 = 0;
+                        for (net.minecraft.client.model.PositionTextureVertex v : q.vertexPositions) {
+                            u0 = Math.min(u0, v.texturePositionX); u1 = Math.max(u1, v.texturePositionX);
+                            v0 = Math.min(v0, v.texturePositionY); v1 = Math.max(v1, v.texturePositionY);
+                        }
+                        add(px, Math.round(u0 * w), Math.round(v0 * h), Math.round(u1 * w), Math.round(v1 * h), 1);
                     }
                 }
-                if (n > 0) out = (int) (sr / n) << 16 | (int) (sg / n) << 8 | (int) (sb / n);
             }
-            AVG.put(tex, out);
-            return out;
+            int c = result();
+            return c >= 0 ? c : averageColor(tex);
         } catch (Throwable t) {
-            return -1;
+            return averageColor(tex);
         }
     }
 
