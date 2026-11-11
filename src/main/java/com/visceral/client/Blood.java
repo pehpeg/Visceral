@@ -67,7 +67,7 @@ public final class Blood {
         float size, grav, drag, age, life, alpha;
         int color, tile;
         Type type;
-        boolean glow, streak, stains, puff, quiet, cloud;
+        boolean glow, streak, stains, puff, quiet, cloud, flat;
         float grow;         // puffs: how much bigger they get over their life
     }
 
@@ -252,11 +252,21 @@ public final class Blood {
         return d;
     }
 
-    /** Blood in water: a slowly spreading, sinking cloud of it. */
+    /**
+     * Blood in water: it spreads out across the surface in a slick, drifting and fading. (Drawn on
+     * the surface: the game draws water over anything just under it.)
+     */
     static void cloud(Type t, double x, double y, double z, float dropSize) {
         if (clouds >= 160 || DROPS.size() >= VisceralConfig.blood.maxDroplets) return;
+        World w = Minecraft.getMinecraft().world;
+        BlockPos.MutableBlockPos bp = new BlockPos.MutableBlockPos(); 
+        bp.setPos(x, y, z);
+        int up = 0;
+        while (up < 6 && w.getBlockState(bp.up()).getMaterial() == Material.WATER) { bp.setPos(x, bp.getY() + 1, z); up++; }
+        double surface = bp.getY() + 0.89 + 0.012;
         Drop d = new Drop();
-        d.x = d.px = x; d.y = d.py = y; d.z = d.pz = z;
+        d.flat = true;
+        d.x = d.px = x; d.y = d.py = surface; d.z = d.pz = z;
         d.type = t;
         d.puff = true;
         d.cloud = true;
@@ -265,12 +275,13 @@ public final class Blood {
         d.alpha = Math.min(0.55f, 0.25f + dropSize * 4f);
         d.size = 0.12f + dropSize * 3f;
         d.grow = 4.5f;
-        d.vx = (RAND.nextFloat() - 0.5f) * 0.25f;
-        d.vy = (RAND.nextFloat() - 0.6f) * 0.2f;
-        d.vz = (RAND.nextFloat() - 0.5f) * 0.25f;
-        d.grav = 0.15f;
-        d.drag = 1.5f;
-        d.life = 4f + RAND.nextFloat() * 3f;
+        d.alpha = Math.min(0.6f, 0.35f + dropSize * 4f);
+        d.size = 0.2f + dropSize * 4f;
+        d.vx = (RAND.nextFloat() - 0.5f) * 0.3f;
+        d.vz = (RAND.nextFloat() - 0.5f) * 0.3f;
+        d.grav = 0f;
+        d.drag = 1.2f;
+        d.life = 5f + RAND.nextFloat() * 4f;
         clouds++;
         addDrop(d);
     }
@@ -319,7 +330,7 @@ public final class Blood {
         Stain s = addStain(t, EnumFacing.UP, bb, x, bb.maxY, z, size, size, 0f, paw ? P_PAW : P_BOOT, orient, host.up(), host);
         s.atlas = 1;
         s.color = color;
-        s.alpha = 0.25f + 0.65f * strength;
+        s.alpha = 0.35f + 0.6f * strength;
         s.dryAt = Math.max(5f, s.dryAt * 0.5f);   // a thin print dries quickly
     }
 
@@ -897,6 +908,13 @@ public final class Blood {
             }
         }
         float s = d.size * 0.5f * (d.puff ? 1f + d.grow * (1f - (1f - k) * (1f - k)) : 1f);
+        if (d.flat) {
+            buf.pos(fx - s, fy, fz - s).tex(u0, v0).color(r, g, b, a).lightmap(lj, lk).endVertex();
+            buf.pos(fx - s, fy, fz + s).tex(u0, v1).color(r, g, b, a).lightmap(lj, lk).endVertex();
+            buf.pos(fx + s, fy, fz + s).tex(u1, v1).color(r, g, b, a).lightmap(lj, lk).endVertex();
+            buf.pos(fx + s, fy, fz - s).tex(u1, v0).color(r, g, b, a).lightmap(lj, lk).endVertex();
+            return;
+        }
         float rx = RIGHT[0] * s, ry = RIGHT[1] * s, rz = RIGHT[2] * s, ux = UP[0] * s, uy = UP[1] * s, uz = UP[2] * s;
         buf.pos(fx - rx - ux, fy - ry - uy, fz - rz - uz).tex(u0, v1).color(r, g, b, a).lightmap(lj, lk).endVertex();
         buf.pos(fx + rx - ux, fy + ry - uy, fz + rz - uz).tex(u1, v1).color(r, g, b, a).lightmap(lj, lk).endVertex();

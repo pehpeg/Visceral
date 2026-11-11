@@ -335,8 +335,8 @@ public final class Tracker {
         if (l == mc.player && wet != null) Sfx.step(l.posX, l.posY, l.posZ);
         if (s.bloodySteps <= 0 || s.feetType == null) return;
         float yaw = l instanceof EntityPlayer ? l.rotationYaw : l.renderYawOffset;
-        float size = biped ? 0.34f * Math.max(0.7f, l.height / 1.8f) : 0.26f * Math.max(0.6f, l.width / 0.9f);
-        Blood.print(s.feetType, s.feetColor, l.posX, l.posY, l.posZ, yaw, s.leftFoot, !biped, size, s.bloodySteps / 12f);
+        float size = biped ? 0.44f * Math.max(0.7f, l.height / 1.8f) : 0.32f * Math.max(0.6f, l.width / 0.9f);
+        Blood.print(s.feetType, s.feetColor, l.posX, l.posY, l.posZ, yaw, s.leftFoot, !biped, size, Math.min(1f, s.bloodySteps / 9f));
         s.bloodySteps--;
     }
 
