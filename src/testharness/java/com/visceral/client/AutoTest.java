@@ -291,6 +291,40 @@ public final class AutoTest {
         }));
         at(t + 122, () -> shot("54_footprints"));
         t += 130;
+        // burning to death slowly, as in daylight: a zombie on 2 health, set alight, left to burn
+        at(t, () -> { spawn("minecraft:zombie"); Tracker.testStyle = -1; });
+        at(t + 15, () -> server(() -> {
+            Entity e = sworld().getEntityByID(mobId);
+            if (e instanceof EntityLivingBase) { ((EntityLivingBase) e).setHealth(2f); e.setFire(20); }
+        }));
+        for (int k = 20; k <= 100; k += 20) { final int kk = k; at(t + 15 + k, () -> shot("56_sunburn_" + kk)); }
+        at(t + 118, () -> note("sunburn: " + Tracker.lastDeath));
+        at(t + 120, () -> server(() -> { Entity e = sworld().getEntityByID(mobId); if (e != null) e.setDead(); }));
+        t += 125;
+        // a Fire Aspect sword: the hit sets it alight, and it dies of the hit or of the burn after
+        at(t, () -> {
+            spawn("minecraft:pig");
+            server(() -> {
+                net.minecraft.item.ItemStack sword = new net.minecraft.item.ItemStack(net.minecraft.init.Items.DIAMOND_SWORD);
+                sword.addEnchantment(net.minecraft.init.Enchantments.FIRE_ASPECT, 2);
+                splayer().inventory.setInventorySlotContents(1, sword);
+                splayer().inventory.currentItem = 1;
+            });
+        });
+        at(t + 5, () -> Minecraft.getMinecraft().player.inventory.currentItem = 1);
+        at(t + 15, () -> server(() -> {
+            Entity e = sworld().getEntityByID(mobId);
+            if (e instanceof EntityLivingBase) ((EntityLivingBase) e).setHealth(9f);
+        }));
+        at(t + 20, AutoTest::attack);
+        for (int k = 5; k <= 60; k += 11) { final int kk = k; at(t + 20 + k, () -> shot("57_fire_aspect_" + kk)); }
+        at(t + 85, () -> note("fire aspect: " + Tracker.lastDeath));
+        at(t + 88, () -> server(() -> {
+            Entity e = sworld().getEntityByID(mobId); if (e != null) e.setDead();
+            splayer().inventory.currentItem = 0;
+        }));
+        at(t + 90, () -> Minecraft.getMinecraft().player.inventory.currentItem = 0);
+        t += 95;
         return t;
     }
 
