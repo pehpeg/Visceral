@@ -52,6 +52,8 @@ public final class Blood {
 
     public static final ResourceLocation ATLAS = new ResourceLocation(Visceral.MODID, "textures/fx/gore.png");
     public static final ResourceLocation GLOSS = new ResourceLocation(Visceral.MODID, "textures/fx/gore_gloss.png");
+    public static final ResourceLocation PRINTS = new ResourceLocation(Visceral.MODID, "textures/fx/prints.png");
+    static final int P_BOOT = 0, P_PAW = 1;
     /** Tiles of the 4x4 atlas. 0-3 round splats, 4-7 angled splats (pointing +u). */
     static final int T_SPLAT0 = 0, T_SPLATS = 4, T_ANGLED0 = 4, T_DOT = 8, T_SMEAR = 9, T_SPATTER = 10, T_POOL = 11,
             T_PUFF = 12, T_DROP = 13, T_SHARD = 14, T_SCORCH = 15;
@@ -65,7 +67,7 @@ public final class Blood {
         float size, grav, drag, age, life, alpha;
         int color, tile;
         Type type;
-        boolean glow, streak, stains, puff, quiet;
+        boolean glow, streak, stains, puff, quiet, cloud;
         float grow;         // puffs: how much bigger they get over their life
     }
 
@@ -85,10 +87,25 @@ public final class Blood {
         BlockPos lightPos;
         BlockPos host;                 // the block it's on: if that goes (or changes shape), so does the stain
         float offset;                  // a hair off the face, a little more for each stain (no flicker)
+        int atlas;                     // 0 gore.png, 1 prints.png (footprints)
     }
 
     private static final List<Drop> DROPS = new ArrayList<>();
     private static final ArrayDeque<Stain> STAINS = new ArrayDeque<>();
+    /** Floor stains by the block they're on, so feet can find wet blood quickly. */
+    private static final java.util.Map<Long, List<Stain>> FLOOR = new java.util.HashMap<>();
+    private static int clouds;
+
+    private static void index(Stain s) {
+        if (s.face != EnumFacing.UP || s.host == null) return;
+        FLOOR.computeIfAbsent(s.host.toLong(), k -> new ArrayList<>(4)).add(s);
+    }
+
+    private static void unindex(Stain s) {
+        if (s.face != EnumFacing.UP || s.host == null) return;
+        List<Stain> l = FLOOR.get(s.host.toLong());
+        if (l != null) { l.remove(s); if (l.isEmpty()) FLOOR.remove(s.host.toLong()); }
+    }
     static final Random RAND = new Random();
     static float clock;
     private static World lastWorld;
@@ -228,6 +245,77 @@ public final class Blood {
         return d;
     }
 
+    /** Blood in water: a slowly spreading, sinking cloud of it. */
+    static void cloud(Type t, double x, double y, double z, float dropSize) {
+        if (clouds >= 160 || DROPS.size() >= VisceralConfig.blood.maxDroplets) return;
+        Drop d = new Drop();
+        d.x = d.px = x; d.y = d.py = y; d.z = d.pz = z;
+        d.type = t;
+        d.puff = true;
+        d.cloud = true;
+        d.tile = T_PUFF;
+        d.color = dark(vary(t.color, 0.1f), 0.85f);
+        d.alpha = Math.min(0.55f, 0.25f + dropSize * 4f);
+        d.size = 0.12f + dropSize * 3f;
+        d.grow = 4.5f;
+        d.vx = (RAND.nextFloat() - 0.5f) * 0.25f;
+        d.vy = (RAND.nextFloat() - 0.6f) * 0.2f;
+        d.vz = (RAND.nextFloat() - 0.5f) * 0.25f;
+        d.grav = 0.15f;
+        d.drag = 1.5f;
+        d.life = 4f + RAND.nextFloat() * 3f;
+        clouds++;
+        DROPS.add(d);
+    }
+
+    // ------------------------------------------------------------------ footprints
+
+    /** Wet blood under these feet (a floor stain still fresh), or null. */
+    static Stain wetFloor(World w, double x, double y, double z) {
+        BlockPos host = new BlockPos(Math.floor(x), Math.floor(y - 0.05), Math.floor(z));
+        List<Stain> l = FLOOR.get(host.toLong());
+        if (l == null) return null;
+        for (Stain s : l) {
+            if (s.atlas != 0 || s.tile == T_SCORCH || s.type == null) continue;
+            if (clock - s.born > s.dryAt * 0.8f) continue;     // dried: nothing to step in
+            if (Math.abs(s.plane - y) > 0.3) continue;
+            double mu = (s.u0 + s.u1) * 0.5, mv = (s.v0 + s.v1) * 0.5, hu = (s.u1 - s.u0) * 0.32, hv = (s.v1 - s.v0) * 0.32;
+            if (Math.abs(x - mu) < hu && Math.abs(z - mv) < hv && (s.u1 - s.u0) > 0.2) return s;
+        }
+        return null;
+    }
+
+    /**
+     * A footprint at (x, ground, z), walking toward yaw (degrees, the game's), left or right foot,
+     * a boot or a paw, `size` blocks long, `strength` 0-1 (how much blood is left on the feet).
+     */
+    static void print(Type t, int color, double x, double y, double z, float yaw, boolean left, boolean paw, float size, float strength) {
+        if (!on() || !VisceralConfig.extras.footprints) return;
+        World w = Minecraft.getMinecraft().world;
+        if (w == null) return;
+        double top = ground(w, x, y + 0.1, z);
+        if (Double.isNaN(top)) return;
+        double fx = -Math.sin(Math.toRadians(yaw)), fz = Math.cos(Math.toRadians(yaw));
+        // left and right feet sit a little apart, across the way it's walking
+        double side = (left ? 1 : -1) * size * 0.28;
+        x += fz * side; z -= fx * side;
+        BlockPos host = new BlockPos(Math.floor(x), Math.floor(top - 0.01), Math.floor(z));
+        IBlockState st = w.getBlockState(host);
+        AxisAlignedBB bb = st.getCollisionBoundingBox(w, host);
+        if (bb == null) return;
+        bb = bb.offset(host);
+        // pictures point toe-up (-v); turn them to the nearest of the four ways it's walking
+        int orient;
+        if (Math.abs(fx) > Math.abs(fz)) orient = 4 | (fx > 0 ? 2 : 0);
+        else orient = fz > 0 ? 2 : 0;
+        if (!left) orient |= 1;
+        Stain s = addStain(t, EnumFacing.UP, bb, x, bb.maxY, z, size, size, 0f, paw ? P_PAW : P_BOOT, orient, host.up(), host);
+        s.atlas = 1;
+        s.color = color;
+        s.alpha = 0.25f + 0.65f * strength;
+        s.dryAt = Math.max(5f, s.dryAt * 0.5f);   // a thin print dries quickly
+    }
+
     /** A burst of mist (or dust, smoke, a flash for sparks) where a hit lands, with a fine spatter. */
     public static void mist(Type t, double x, double y, double z, float size) {
         if (!on() || t.none()) return;
@@ -358,7 +446,8 @@ public final class Blood {
         s.light = Minecraft.getMinecraft().world.getCombinedLight(s.lightPos, 0);
         s.offset = 0.0015f + (stainSeq++ % 24) * 0.00025f;
         STAINS.addLast(s);
-        while (STAINS.size() > VisceralConfig.blood.maxStains) STAINS.pollFirst();
+        index(s);
+        while (STAINS.size() > VisceralConfig.blood.maxStains) unindex(STAINS.pollFirst());
         return s;
     }
 
@@ -372,6 +461,8 @@ public final class Blood {
             lastWorld = mc.world;
             DROPS.clear();
             STAINS.clear();
+            FLOOR.clear();
+            clouds = 0;
         }
         if (mc.world == null || mc.isGamePaused()) return;
         clock += DT;
@@ -380,7 +471,7 @@ public final class Blood {
         while (it.hasNext()) {
             Drop d = it.next();
             d.age += DT;
-            if (d.age >= d.life || d.y < -64) { it.remove(); continue; }
+            if (d.age >= d.life || d.y < -64) { if (d.cloud) clouds--; it.remove(); continue; }
             d.px = d.x; d.py = d.y; d.pz = d.z;
             float f = (float) Math.exp(-d.drag * DT);
             d.vx *= f; d.vy *= f; d.vz *= f;
@@ -398,9 +489,9 @@ public final class Blood {
         List<Stain> dripping = null;
         while (si.hasNext()) {
             Stain s = si.next();
-            if (clock - s.born > s.life) { si.remove(); continue; }
+            if (clock - s.born > s.life) { si.remove(); unindex(s); continue; }
             if (relight) s.light = w.getCombinedLight(s.lightPos, 0);
-            if (recheck && !onBlock(w, s)) { si.remove(); continue; }
+            if (recheck && !onBlock(w, s)) { si.remove(); unindex(s); continue; }
             if (s.drips > 0 && clock >= s.nextDrip) {
                 s.drips--;
                 s.nextDrip = clock + 0.6f + RAND.nextFloat() * 1.6f;
@@ -456,7 +547,12 @@ public final class Blood {
             if (!w.isBlockLoaded(MPOS)) return true;
             IBlockState st = w.getBlockState(MPOS);
             Material m = st.getMaterial();
-            if (m.isLiquid()) return true;   // into water or lava: gone
+            if (m.isLiquid()) {
+                // into water, blood spreads in a cloud; into lava, it hisses off as smoke
+                if (m == Material.WATER && (d.type.style == Style.LIQUID || d.type.style == Style.SLIME || d.type.style == Style.ECTO)) cloud(d.type, x, y, z, d.size);
+                else if (m == Material.LAVA && RAND.nextInt(3) == 0) mist(BloodTypes.ember(), x, y, z, 0.4f);
+                return true;
+            }
             if (m != Material.AIR) {
                 AxisAlignedBB bb = st.getCollisionBoundingBox(w, MPOS);
                 if (bb != null && bb.maxX > bb.minX) {
@@ -626,12 +722,16 @@ public final class Blood {
         GlStateManager.doPolygonOffset(-3f, -3f);
         bind(ATLAS);
         buf.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
-        for (Stain s : STAINS) stain(buf, s, now, cx, cy, cz, false);
+        for (Stain s : STAINS) if (s.atlas == 0) stain(buf, s, now, cx, cy, cz, false);
+        tess.draw();
+        mc.getTextureManager().bindTexture(PRINTS);
+        buf.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
+        for (Stain s : STAINS) if (s.atlas == 1) stain(buf, s, now, cx, cy, cz, false);
         tess.draw();
         bind(GLOSS);
         GlStateManager.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE);
         buf.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
-        for (Stain s : STAINS) stain(buf, s, now, cx, cy, cz, true);
+        for (Stain s : STAINS) if (s.atlas == 0) stain(buf, s, now, cx, cy, cz, true);
         tess.draw();
         GlStateManager.doPolygonOffset(0f, 0f);
         GlStateManager.disablePolygonOffset();

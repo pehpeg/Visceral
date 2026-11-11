@@ -113,6 +113,21 @@ final class Sfx {
         play("flesh.drip", x, y, z, 0.35f, 1f);
     }
 
+    /** Flies buzzing over old gore. */
+    static void buzz(double x, double y, double z) {
+        play("flies.buzz", x, y, z, 0.45f, 1f);
+    }
+
+    /** Your foot squelching down in blood. */
+    static void step(double x, double y, double z) {
+        play("flesh.step", x, y, z, 0.4f, 1f);
+    }
+
+    /** Flesh burning (fire, lava). */
+    static void burn(double x, double y, double z) {
+        play("ember.hit", x, y, z, 0.6f, 0.8f);
+    }
+
     /** Blood hitting your face (your screen). */
     static void screen() {
         if (!on()) return;

@@ -382,5 +382,38 @@
         "name": "visceral:ecto_burst3"
       }
     ]
+  },
+  "flies.buzz": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flies.buzz",
+    "sounds": [
+      {
+        "name": "visceral:flies_buzz1"
+      },
+      {
+        "name": "visceral:flies_buzz2"
+      },
+      {
+        "name": "visceral:flies_buzz3"
+      }
+    ]
+  },
+  "flesh.step": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.step",
+    "sounds": [
+      {
+        "name": "visceral:flesh_step1"
+      },
+      {
+        "name": "visceral:flesh_step2"
+      },
+      {
+        "name": "visceral:flesh_step3"
+      },
+      {
+        "name": "visceral:flesh_step4"
+      }
+    ]
   }
 }

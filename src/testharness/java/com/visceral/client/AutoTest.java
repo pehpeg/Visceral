@@ -191,12 +191,89 @@ public final class AutoTest {
             }));
             t += 165;
         }
+        // round 2: what hurt it changes how it bleeds and dies
+        t = special(t);
         // an overview of the room and all the blood, from further back, then a later one once it's dried a bit
         at(t, () -> server(() -> splayer().connection.setPlayerLocation(0.5, baseY + 1, -3.5, 0f, 18f)));
+        t += 120;   // (a few seconds for flies to find the old gore)
         at(t + 20, () -> shot("99_overview"));
         at(t + 25, () -> server(() -> splayer().connection.setPlayerLocation(-2.5, baseY + 1, -1.5, -30f, 25f)));
         at(t + 45, () -> shot("99_overview_side"));
         at(t + 60, () -> finish(Minecraft.getMinecraft()));
+    }
+
+    private static int special(int t) {
+        // an arrow through a zombie (it bleeds where the arrow went in, and sprays out the far side)
+        at(t, () -> { spawn("minecraft:zombie"); Tracker.testStyle = 0; });
+        at(t + 20, () -> server(() -> {
+            WorldServer w = sworld();
+            net.minecraft.entity.projectile.EntityTippedArrow arrow = new net.minecraft.entity.projectile.EntityTippedArrow(w, splayer());
+            arrow.setPosition(0.5, baseY + 1.3, 0.3);
+            arrow.shoot(0, -0.05, 1, 2.6f, 0f);
+            arrow.setDamage(3.0);
+            w.spawnEntity(arrow);
+        }));
+        at(t + 24, () -> shot("50_arrow_hit"));
+        at(t + 40, () -> shot("50_arrow_later"));
+        at(t + 45, () -> server(() -> { Entity e = sworld().getEntityByID(mobId); if (e != null) e.setDead(); }));
+        t += 55;
+        // an explosion beside a pig: it always bursts, thrown hard and high
+        at(t, () -> spawn("minecraft:pig"));
+        at(t + 20, () -> server(() -> sworld().createExplosion(null, 1.6, baseY + 0.3, 2.9, 2.5f, false)));
+        at(t + 23, () -> shot("51_explosion"));
+        at(t + 32, () -> shot("51_explosion_later"));
+        t += 50;
+        // a cow burnt to death: blackened gibs and smoke, no blood
+        at(t, () -> spawn("minecraft:cow"));
+        at(t + 15, () -> server(() -> { Entity e = sworld().getEntityByID(mobId); if (e != null) e.setFire(10); }));
+        at(t + 20, () -> server(() -> {
+            Entity e = sworld().getEntityByID(mobId);
+            if (e instanceof EntityLivingBase) { ((EntityLivingBase) e).hurtResistantTime = 0; e.attackEntityFrom(DamageSource.ON_FIRE, 1000f); }
+        }));
+        at(t + 24, () -> shot("52_fire_death"));
+        at(t + 40, () -> shot("52_fire_later"));
+        t += 55;
+        // a villager standing in water: its blood clouds the water, its parts float
+        at(t, () -> server(() -> {
+            WorldServer w = sworld();
+            for (int x = -1; x <= 2; x++) for (int z = 2; z <= 4; z++) {
+                w.setBlockState(new BlockPos(x, baseY - 1, z), Blocks.WATER.getDefaultState());
+                w.setBlockState(new BlockPos(x, baseY - 2, z), Blocks.WATER.getDefaultState());
+            }
+        }));
+        at(t + 5, () -> spawn("minecraft:villager"));
+        at(t + 25, AutoTest::attack);
+        at(t + 30, () -> hurt(0.4f));
+        at(t + 36, () -> shot("53_water_hit"));
+        at(t + 45, () -> { attack(); hurt(100f); Tracker.testStyle = 0; });
+        at(t + 52, () -> shot("53_water_burst"));
+        at(t + 75, () -> shot("53_water_later"));
+        at(t + 80, () -> server(() -> {
+            WorldServer w = sworld();
+            for (int x = -1; x <= 2; x++) for (int z = 2; z <= 4; z++) {
+                w.setBlockState(new BlockPos(x, baseY - 1, z), Blocks.DIRT.getDefaultState());
+                w.setBlockState(new BlockPos(x, baseY - 2, z), Blocks.DIRT.getDefaultState());
+            }
+        }));
+        t += 90;
+        // a pool to walk through, then a walk across the room: footprints, kicked gibs, flies
+        at(t, () -> { spawn("minecraft:pig"); Tracker.testStyle = 2; });
+        at(t + 20, () -> hurt(100f));
+        at(t + 80, () -> server(() -> splayer().connection.setPlayerLocation(0.5, baseY, 1.6, 0f, 55f)));
+        at(t + 90, () -> walk(true));
+        at(t + 112, () -> walk(false));
+        at(t + 114, () -> server(() -> {
+            EntityPlayerMP p = splayer();
+            p.connection.setPlayerLocation(p.posX, p.posY, p.posZ, 180f, 60f);
+        }));
+        at(t + 122, () -> shot("54_footprints"));
+        return t + 130;
+    }
+
+    /** Hold (or let go of) the walk-forward key, so you walk for real. */
+    private static void walk(boolean on) {
+        Minecraft mc = Minecraft.getMinecraft();
+        net.minecraft.client.settings.KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), on);
     }
 
     private static void spawn(String id) {

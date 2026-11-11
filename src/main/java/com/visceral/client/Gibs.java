@@ -60,6 +60,9 @@ public final class Gibs {
     static final class Gib {
         ModelParts.Group group;      // null: a chunk
         boolean whole;               // a torn-off limb: drawn with everything below it
+        boolean charred;             // burnt: blackened, no blood, smoking for a while
+        boolean flies;               // flies have found it
+        float kickedAt = -10f;
         ResourceLocation tex;
         Type type;
         double x, y, z, px, py, pz;
@@ -136,6 +139,11 @@ public final class Gibs {
      * Returns false if its model couldn't be read (the caller throws chunks instead).
      */
     static boolean burst(EntityLivingBase e, ModelParts.Capture cap, Type t, double dx, double dz, float force) {
+        return burst(e, cap, t, dx, dz, force, false, 0f);
+    }
+
+    /** As burst(), optionally burnt, and with `lift` extra upward throw (an explosion under it). */
+    static boolean burst(EntityLivingBase e, ModelParts.Capture cap, Type t, double dx, double dz, float force, boolean charred, float lift) {
         BURST.add(e.getEntityId());
         if (cap == null) return false;
         Lost lost = LOST.get(e.getEntityId());
@@ -152,6 +160,8 @@ public final class Gibs {
             gb.vx = (float) (ox / ol * out + dx * blow);
             gb.vy = (float) (oy / ol * out) + (3f + Blood.RAND.nextFloat() * 3f) * force * (g.head ? 1.5f : 1f);
             gb.vz = (float) (oz / ol * out + dz * blow);
+            gb.vy += lift * (0.6f + Blood.RAND.nextFloat() * 0.8f);
+            gb.charred = charred;
             spin(gb, (6f + Blood.RAND.nextFloat() * 10f) * Math.min(2f, force));
             add(gb);
         }
@@ -200,6 +210,10 @@ public final class Gibs {
 
     /** n chunks of meat (bone, metal, slime...) from a box around (x,y,z). */
     static void chunks(Type t, double x, double y, double z, float w, float h, int n, double dx, double dz, float force) {
+        chunks(t, x, y, z, w, h, n, dx, dz, force, false);
+    }
+
+    static void chunks(Type t, double x, double y, double z, float w, float h, int n, double dx, double dz, float force, boolean charred) {
         if (t.none()) return;
         for (int k = 0; k < n; k++) {
             Gib gb = new Gib();
@@ -209,7 +223,8 @@ public final class Gibs {
             gb.z = gb.pz = z + (Blood.RAND.nextDouble() - 0.5) * w;
             gb.chunk = (0.06f + Blood.RAND.nextFloat() * 0.1f) * (t.style == Style.SLIME ? 1.6f : 1f);
             gb.r = gb.chunk * 0.5f;
-            gb.color = Blood.vary(t.chunkColor, 0.18f);
+            gb.color = charred ? Blood.vary(0x2A1E18, 0.25f) : Blood.vary(t.chunkColor, 0.18f);
+            gb.charred = charred;
             gb.lin[0] = gb.lin[4] = gb.lin[8] = 1f;
             randomTurn(gb);
             float sp = (2f + Blood.RAND.nextFloat() * 4f) * force;
@@ -314,9 +329,27 @@ public final class Gibs {
         }
     }
 
+    private static final BlockPos.MutableBlockPos POS = new BlockPos.MutableBlockPos();
+
     private static void step(World w, Gib g) {
         g.px = g.x; g.py = g.y; g.pz = g.z;
         System.arraycopy(g.lin, 0, g.plin, 0, 9);
+        POS.setPos(g.x, g.y, g.z);
+        net.minecraft.block.material.Material mat = w.getBlockState(POS).getMaterial();
+        if (mat == net.minecraft.block.material.Material.WATER) {
+            // flesh floats up and bobs at the surface, bleeding a cloud into the water
+            g.vy += (g.chunk > 0 ? 26f : 28f) * DT;
+            g.vx *= 0.85f; g.vy *= 0.85f; g.vz *= 0.85f;
+            g.wx *= 0.9f; g.wy *= 0.9f; g.wz *= 0.9f;
+            g.ground = false;
+            if (!g.charred && g.type.stains() && Blood.RAND.nextInt(12) == 0) Blood.cloud(g.type, g.x, g.y, g.z, 0.05f);
+        } else if (mat == net.minecraft.block.material.Material.LAVA) {
+            // into lava: it burns black and sinks, smoking
+            if (!g.charred) { g.charred = true; Sfx.burn(g.x, g.y, g.z); }
+            g.life = Math.min(g.life, g.age + 3f);
+            g.vx *= 0.6f; g.vz *= 0.6f; g.vy = -0.3f;
+            if (Blood.RAND.nextInt(4) == 0) Blood.mist(BloodTypes.ember(), g.x, g.y + 0.2, g.z, 0.5f);
+        }
         boolean sinking = g.life - g.age < 1.5f;
         if (sinking) {
             // sinks into the ground, slowly
@@ -375,7 +408,15 @@ public final class Gibs {
         }
 
         Type t = g.type;
-        boolean wet = t.stains();
+        boolean wet = t.stains() && !g.charred;
+        if (g.charred && g.age < 4f && Blood.RAND.nextInt(10) == 0) Blood.mist(BloodTypes.ember(), g.x, g.y, g.z, 0.4f);
+        // walking into gore knocks it about
+        if (g.ground && VisceralConfig.gibs.kickable && (int) (g.age * 20) % 2 == 0) kick(w, g);
+        // old meat draws flies
+        if (wet && !g.flies && g.group != null && g.age > 9f && g.life - g.age > 6f && VisceralConfig.extras.flies) {
+            g.flies = true;
+            if (Blood.RAND.nextInt(100) < 40) Flies.swarm(g.x, g.y + 0.1, g.z, g.life - g.age);
+        }
         // hitting something hard leaves a splat (and a sound)
         if (impact > 3.5f) {
             if (wet && !g.splatted) {
@@ -392,6 +433,32 @@ public final class Gibs {
             if (VisceralConfig.extras.bloodPools) Blood.groundStain(t, g.x, g.y, g.z, Math.min(1.6f, g.r * 4f + 0.25f), 3f, Blood.T_POOL);
         }
         if (t.style == Style.EMBERS && g.age < 3f && Blood.RAND.nextInt(5) == 0) Blood.mist(t, g.x, g.y, g.z, 0.5f);
+    }
+
+    /** A creature (you included) walking through a gib knocks it along. */
+    private static void kick(World w, Gib g) {
+        double r = Math.max(0.25, g.r + 0.15);
+        AxisAlignedBB box = new AxisAlignedBB(g.x - r, g.y - 0.3, g.z - r, g.x + r, g.y + 0.8, g.z + r);
+        for (EntityLivingBase e : w.getEntitiesWithinAABB(EntityLivingBase.class, box)) {
+            double mx = e.posX - e.lastTickPosX, mz = e.posZ - e.lastTickPosZ;
+            double sp = Math.sqrt(mx * mx + mz * mz);
+            if (sp < 0.03 || e.isDead || e.deathTime > 0) continue;
+            float k = (float) Math.min(1.2, sp * 6);
+            double ox = g.x - e.posX, oz = g.z - e.posZ, ol = Math.max(1e-3, Math.sqrt(ox * ox + oz * oz));
+            g.vx = (float) ((mx / sp * 0.7 + ox / ol * 0.3) * 4f * k);
+            g.vz = (float) ((mz / sp * 0.7 + oz / ol * 0.3) * 4f * k);
+            g.vy = 1.6f + 1.2f * k;
+            g.ground = false;
+            spin(g, 8f * k);
+            if (Blood.clock - g.kickedAt > 0.5f) {
+                g.kickedAt = Blood.clock;
+                if (!g.charred && g.type.stains()) {
+                    Sfx.splat(g.type, g.x, g.y, g.z, 0.6f);
+                    Blood.spray(g.type, g.x, g.y, g.z, mx, 0.4, mz, 3, 2f, 0.6f);
+                }
+            }
+            return;
+        }
     }
 
     /** A long part resting on its end tips over until it lies along the ground. */
@@ -615,13 +682,15 @@ public final class Gibs {
                 if (bound != g.tex) { mc.getTextureManager().bindTexture(g.tex); bound = g.tex; }
                 GlStateManager.enableTexture2D();
                 GlStateManager.color(1f, 1f, 1f, 1f);
-                boolean bloody = Wounds.on() && !g.type.glows() && !g.type.none()
+                if (g.charred) GlStateManager.color(0.3f, 0.25f, 0.22f, 1f);
+                boolean bloody = !g.charred && Wounds.on() && !g.type.glows() && !g.type.none()
                         && Wounds.begin(g.type.color, 4, System.identityHashCode(g));
                 try {
                     ModelParts.drawGroup(g.group, g.whole);
                     if (bloody) { Wounds.end(); bloody = false; }
                     // the torn end: raw flesh and bone where it came off
-                    if (stumpsOn() && g.type.stains()) {
+                    GlStateManager.color(1f, 1f, 1f, 1f);
+                    if (stumpsOn() && g.type.stains() && !g.charred) {
                         cap(2f * g.group.hx * 0.8f, 2f * g.group.hz * 0.8f, g.group.limb || g.group.head);
                         mc.getTextureManager().bindTexture(g.tex);
                         bound = g.tex;

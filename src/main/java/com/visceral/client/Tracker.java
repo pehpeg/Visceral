@@ -9,6 +9,9 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.init.MobEffects;
 import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.world.World;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
@@ -43,6 +46,38 @@ public final class Tracker {
         float healthBefore;
         float spurtUntil;
         ModelParts.Group stump;
+        double prevY = Double.NaN;
+        float fallV;                       // how fast it was falling lately (blocks/tick, negative)
+        double walked, lastStep;           // footprints: distance walked, and at the last print
+        int bloodySteps, feetColor;        // prints left before the feet are clean
+        Type feetType;
+        boolean leftFoot;
+    }
+
+    /** What hurt a creature, as best the client can tell. */
+    enum Cause { MELEE, PROJECTILE, EXPLOSION, FIRE, FALL, QUIET, OTHER }
+
+    private static final class Hit {
+        Cause cause = Cause.OTHER;
+        double px, py, pz;                 // where it landed
+        double dx, dy, dz;                 // which way it went (unit)
+        double ex, ey, ez;                 // where it came out (projectiles)
+        Attack melee;
+    }
+
+    /** Projectiles seen lately: {x, y, z, motion x, y, z, tick}. */
+    private static final Map<Integer, double[]> PROJ = new HashMap<>();
+    /** Explosions heard lately: {x, y, z, clock}. */
+    private static final List<double[]> BOOMS = new ArrayList<>();
+
+    /** An explosion's sound is the client's only sign of one: note where and when. */
+    @SubscribeEvent
+    public static void onSound(net.minecraftforge.client.event.sound.PlaySoundEvent event) {
+        net.minecraft.client.audio.ISound snd = event.getSound();
+        if (snd == null || snd.getSoundLocation() == null) return;
+        if (!"entity.generic.explode".equals(snd.getSoundLocation().getResourcePath())) return;
+        BOOMS.add(new double[]{snd.getXPosF(), snd.getYPosF(), snd.getZPosF(), clock});
+        if (BOOMS.size() > 16) BOOMS.remove(0);
     }
 
     private static final class Attack {
@@ -89,6 +124,14 @@ public final class Tracker {
         double range = VisceralConfig.blood.range;
         List<Entity> list = new ArrayList<>(mc.world.loadedEntityList);
         for (Entity e : list) {
+            if (e instanceof net.minecraft.entity.IProjectile || e instanceof net.minecraft.entity.projectile.EntityFireball) {
+                PROJ.put(e.getEntityId(), new double[]{e.posX, e.posY, e.posZ, e.posX - e.lastTickPosX, e.posY - e.lastTickPosY,
+                        e.posZ - e.lastTickPosZ, tick});
+            }
+        }
+        PROJ.values().removeIf(p -> tick - p[6] > 4);
+        BOOMS.removeIf(b -> clock - b[3] > 0.5f);
+        for (Entity e : list) {
             if (!(e instanceof EntityLivingBase)) continue;
             EntityLivingBase l = (EntityLivingBase) e;
             int id = l.getEntityId();
@@ -104,9 +147,15 @@ public final class Tracker {
                 continue;
             }
             s.seen = tick;
+            if (!Double.isNaN(s.prevY)) {
+                float vy = (float) (l.posY - s.prevY);
+                s.fallV = vy < s.fallV ? vy : Math.min(0f, s.fallV + 0.12f);
+            }
+            s.prevY = l.posY;
             boolean near = on && l.getDistanceSq(mc.player) <= range * range;
             if (near) {
                 try {
+                    if (!s.dead) feet(mc, l, s);
                     watch(mc, l, s);
                 } catch (RuntimeException ex) {
                     Visceral.LOG.debug("gore for {} failed", l, ex);
@@ -187,29 +236,167 @@ public final class Tracker {
 
     // ------------------------------------------------------------------ hits
 
+    /**
+     * What hurt it, as best we can tell from here: your swing, a projectile that was flying at it,
+     * an explosion just heard nearby, a hard landing, fire, or something quiet (drowning, poison,
+     * wither). Anything else is "other", thrown the way the hit knocked it.
+     */
+    private static Hit cause(Minecraft mc, EntityLivingBase l, State s, float window) {
+        Hit h = new Hit();
+        Attack a = mine(l.getEntityId(), window);
+        AxisAlignedBB bb = l.getEntityBoundingBox().grow(0.35);
+        if (a != null) {
+            h.cause = Cause.MELEE;
+            h.melee = a;
+            double[] d = direction(mc, l, a);
+            h.dx = d[0]; h.dz = d[1];
+            if (a.hasPoint) { h.px = a.x; h.py = a.y; h.pz = a.z; } else side(l, h);
+            return h;
+        }
+        // a projectile whose path ran into it
+        double best = 1e9;
+        for (double[] p : PROJ.values()) {
+            double m = Math.sqrt(p[3] * p[3] + p[4] * p[4] + p[5] * p[5]);
+            if (m < 0.15 || tick - p[6] > 3) continue;
+            Vec3d from = new Vec3d(p[0] - p[3], p[1] - p[4], p[2] - p[5]), to = new Vec3d(p[0] + p[3] * 3, p[1] + p[4] * 3, p[2] + p[5] * 3);
+            RayTraceResult r = bb.calculateIntercept(from, to);
+            Vec3d at = r != null ? r.hitVec : bb.contains(from) ? from : null;
+            if (at == null) continue;
+            double dd = at.squareDistanceTo(from);
+            if (dd < best) {
+                best = dd;
+                h.cause = Cause.PROJECTILE;
+                h.px = at.x; h.py = at.y; h.pz = at.z;
+                h.dx = p[3] / m; h.dy = p[4] / m; h.dz = p[5] / m;
+            }
+        }
+        if (h.cause == Cause.PROJECTILE) {
+            // and where it came out: back along its path from beyond the far side
+            Vec3d in = new Vec3d(h.px, h.py, h.pz);
+            double far = l.width + l.height + 1;
+            Vec3d beyond = in.addVector(h.dx * far, h.dy * far, h.dz * far);
+            RayTraceResult out = bb.calculateIntercept(beyond, in);
+            Vec3d o = out != null ? out.hitVec : in;
+            h.ex = o.x; h.ey = o.y; h.ez = o.z;
+            return h;
+        }
+        for (double[] b : BOOMS) {
+            double dx = l.posX - b[0], dy = l.posY + l.height * 0.5 - b[1], dz = l.posZ - b[2];
+            double dd = dx * dx + dy * dy + dz * dz;
+            if (dd > 10 * 10) continue;
+            double m = Math.max(0.3, Math.sqrt(dd));
+            h.cause = Cause.EXPLOSION;
+            h.dx = dx / m; h.dy = Math.max(0.3, dy / m); h.dz = dz / m;
+            side(l, h);
+            return h;
+        }
+        if (s.fallV < -0.5f && l.posY - s.prevY > -0.15) {
+            h.cause = Cause.FALL;
+            h.px = l.posX; h.py = l.posY + 0.1; h.pz = l.posZ;
+            return h;
+        }
+        if (l.isBurning()) {
+            h.cause = Cause.FIRE;
+            side(l, h);
+            return h;
+        }
+        if ((l.isInWater() && l.getAir() <= 0) || l.isPotionActive(MobEffects.POISON) || l.isPotionActive(MobEffects.WITHER)) {
+            h.cause = Cause.QUIET;
+            return h;
+        }
+        double[] d = direction(mc, l, null);
+        h.dx = d[0]; h.dz = d[1];
+        side(l, h);
+        return h;
+    }
+
+    /**
+     * Feet in wet blood pick it up; walking on, they leave prints, fainter with each step until
+     * they're clean. Your own steps in it squelch.
+     */
+    private static void feet(Minecraft mc, EntityLivingBase l, State s) {
+        if (!VisceralConfig.extras.footprints || !l.onGround || l instanceof net.minecraft.entity.monster.EntitySlime
+                || l instanceof net.minecraft.entity.EntityFlying) return;
+        double mx = l.posX - l.lastTickPosX, mz = l.posZ - l.lastTickPosZ;
+        double step = Math.sqrt(mx * mx + mz * mz);
+        if (step > 1.5) return;   // a teleport, not a step
+        Blood.Stain wet = Blood.wetFloor(mc.world, l.posX, l.posY, l.posZ);
+        if (wet != null) {
+            s.bloodySteps = 8 + Blood.RAND.nextInt(5);
+            s.feetColor = wet.color;
+            s.feetType = wet.type;
+        }
+        s.walked += step;
+        boolean biped = l.height > l.width * 1.6f;
+        float stride = biped ? 0.62f * Math.max(0.6f, l.height / 1.8f) : 0.45f * Math.max(0.5f, l.width / 0.9f);
+        if (s.walked - s.lastStep < stride) return;
+        s.lastStep = s.walked;
+        s.leftFoot = !s.leftFoot;
+        if (l == mc.player && wet != null) Sfx.step(l.posX, l.posY, l.posZ);
+        if (s.bloodySteps <= 0 || s.feetType == null) return;
+        float yaw = l instanceof EntityPlayer ? l.rotationYaw : l.renderYawOffset;
+        float size = biped ? 0.34f * Math.max(0.7f, l.height / 1.8f) : 0.26f * Math.max(0.6f, l.width / 0.9f);
+        Blood.print(s.feetType, s.feetColor, l.posX, l.posY, l.posZ, yaw, s.leftFoot, !biped, size, s.bloodySteps / 12f);
+        s.bloodySteps--;
+    }
+
+    /** A point on the side the hit came from. */
+    private static void side(EntityLivingBase l, Hit h) {
+        h.px = l.posX - h.dx * l.width * 0.3;
+        h.py = l.posY + l.height * (0.5 + Blood.RAND.nextFloat() * 0.25);
+        h.pz = l.posZ - h.dz * l.width * 0.3;
+    }
+
+    // ------------------------------------------------------------------ hits
+
     private static void hit(Minecraft mc, EntityLivingBase l, State s, Type t, float dmg, boolean self) {
         if (t.none()) return;
         float k = strength(l, dmg);
+        Hit h = cause(mc, l, s, 0.8f);
         if (self) {
-            if (wet(t)) ScreenBlood.hurt(t.color, k);
+            if (wet(t) && h.cause != Cause.FIRE && h.cause != Cause.QUIET) ScreenBlood.hurt(t.color, k);
             if (mc.gameSettings.thirdPersonView == 0) return;   // no droplets in your own face
         }
-        Attack a = mine(l.getEntityId(), 0.8f);
-        double[] d = direction(mc, l, a);
-        double px, py, pz;
-        if (a != null && a.hasPoint) { px = a.x; py = a.y; pz = a.z; }
-        else {
-            px = l.posX - d[0] * l.width * 0.3;
-            py = l.posY + l.height * (0.5 + Blood.RAND.nextFloat() * 0.25);
-            pz = l.posZ - d[1] * l.width * 0.3;
-        }
+        Attack a = h.melee;
+        double[] d = {h.dx, h.dz};
+        double px = h.px, py = h.py, pz = h.pz;
         float amt = Blood.amount();
         int n = Math.round((8 + 22 * k) * amt);
-        // out the far side with the blow, and a little back toward the hit
-        Blood.spray(t, px, py, pz, d[0], 0.35, d[1], n, 2.5f + 2.5f * k, 0.55f);
-        Blood.spray(t, px, py, pz, -d[0], 0.6, -d[1], Math.round(n * 0.25f), 1.5f + k, 0.6f);
-        Blood.mist(t, px, py, pz, 0.6f + 0.4f * k);
-        if (k > 1.2f) Blood.groundStain(t, l.posX + d[0] * 0.6, l.posY + 0.1, l.posZ + d[1] * 0.6, 0.5f + 0.3f * k, 0.15f, Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
+        switch (h.cause) {
+            case QUIET:
+                return;   // drowning, poison, wither: no wound to bleed from
+            case FIRE:
+                // burning: it cooks rather than bleeds
+                if (Blood.RAND.nextInt(3) == 0) Blood.mist(BloodTypes.ember(), px, py, pz, 0.5f);
+                if (Blood.RAND.nextInt(4) == 0) Sfx.burn(px, py, pz);
+                return;
+            case PROJECTILE:
+                // a small spit back out of the hole it went in, and the real spray out the far side
+                Blood.spray(t, px, py, pz, -h.dx, -h.dy + 0.3, -h.dz, Math.max(2, n / 5), 1.5f, 0.5f);
+                Blood.spray(t, h.ex, h.ey, h.ez, h.dx, h.dy + 0.15, h.dz, n, 3.5f + 3f * k, 0.3f);
+                Blood.mist(t, h.ex, h.ey, h.ez, 0.7f + 0.4f * k);
+                break;
+            case EXPLOSION:
+                Blood.spray(t, px, py, pz, h.dx, h.dy + 0.4, h.dz, n * 2, 4f + 3f * k, 0.8f);
+                Blood.mist(t, px, py, pz, 1f + 0.5f * k);
+                break;
+            case FALL:
+                // a hard landing: it splats out around the feet
+                Blood.groundStain(t, l.posX, l.posY + 0.1, l.posZ, Math.min(2.5f, 0.6f + 0.4f * k + l.width), 0.1f,
+                        Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
+                for (int i = 0; i < 4; i++) {
+                    double ang = Blood.RAND.nextDouble() * Math.PI * 2;
+                    Blood.spray(t, l.posX, l.posY + 0.15, l.posZ, Math.cos(ang), 0.25, Math.sin(ang), Math.max(2, n / 4), 2.5f + k, 0.4f);
+                }
+                break;
+            default:
+                // out the far side with the blow, and a little back toward the hit
+                Blood.spray(t, px, py, pz, d[0], 0.35, d[1], n, 2.5f + 2.5f * k, 0.55f);
+                Blood.spray(t, px, py, pz, -d[0], 0.6, -d[1], Math.round(n * 0.25f), 1.5f + k, 0.6f);
+                Blood.mist(t, px, py, pz, 0.6f + 0.4f * k);
+                break;
+        }
+        if (k > 1.2f && h.cause != Cause.FALL) Blood.groundStain(t, l.posX + d[0] * 0.6, l.posY + 0.1, l.posZ + d[1] * 0.6, 0.5f + 0.3f * k, 0.15f, Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
         Sfx.hit(t, px, py, pz, k);
 
         // a heavy enough hit can tear a limb off
@@ -244,45 +431,70 @@ public final class Tracker {
 
     private static void death(Minecraft mc, EntityLivingBase l, State s, Type t, float lastHealth) {
         if (t.none()) return;
-        Attack a = mine(l.getEntityId(), 1.2f);
-        double[] d = direction(mc, l, a);
+        Hit h = cause(mc, l, s, 1.2f);
+        Attack a = h.melee;
+        double[] d = {h.dx, h.dz};
+        if (h.cause == Cause.PROJECTILE) { double m = Math.max(1e-3, Math.sqrt(h.dx * h.dx + h.dz * h.dz)); d = new double[]{h.dx / m, h.dz / m}; }
         float k = strength(l, lastHealth);
         float amt = Blood.amount();
         // how big it is, next to a zombie
         float size = MathHelper.clamp((l.width * l.height) / (0.6f * 1.95f), 0.3f, 6f);
         double cx = l.posX, cy = l.posY + l.height * 0.5, cz = l.posZ;
+        boolean fire = h.cause == Cause.FIRE, boom = h.cause == Cause.EXPLOSION, fall = h.cause == Cause.FALL;
+        if (h.cause == Cause.QUIET) {
+            // drowned, poisoned, withered: it just dies
+            if (VisceralConfig.extras.bloodPools && wet(t) && !l.isInWater()) Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.max(0.6f, l.width * 1.2f), 4f, Blood.T_POOL);
+            return;
+        }
         boolean gib = VisceralConfig.gibs.deathGibs && goreAllowed(l, false)
-                && Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance
-                && (!VisceralConfig.gibs.onlyYourKills || a != null);
+                && (boom || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance)
+                && (!VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE);
         if (gib) {
-            float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k));
+            float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k)) * (boom ? 2.2f : fall ? 1.2f : 1f);
             ModelParts.Capture cap = ModelParts.capture(l, 1f);
             // not every death is a burst: some lose their head, some a limb, and fall
-            int style = testStyle >= 0 ? testStyle : !VisceralConfig.gibs.deathStyles ? 0
+            int style = boom || fire || fall ? 0 : testStyle >= 0 ? testStyle : !VisceralConfig.gibs.deathStyles ? 0
                     : Blood.RAND.nextFloat() < 0.55f ? 0 : Blood.RAND.nextFloat() < 0.6f ? 1 : 2;
             if (style > 0 && cap != null && partDeath(mc, l, s, t, cap, style, d, force, size)) return;
-            boolean parts = Gibs.burst(l, cap, t, d[0], d[1], force);
+            float lift = boom ? 4f : fall ? -2f : 0f;
+            boolean parts = Gibs.burst(l, cap, t, d[0], d[1], force, fire, lift);
             if (VisceralConfig.gibs.chunks || !parts) {
-                int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f));
+                int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f) * (boom ? 1.6f : 1f));
                 if (!parts) n = Math.max(n, 8);
-                Gibs.chunks(t, l.posX, l.posY + l.height * 0.2, l.posZ, l.width, l.height * 0.7f, n, d[0], d[1], force);
+                Gibs.chunks(t, l.posX, l.posY + l.height * 0.2, l.posZ, l.width, l.height * 0.7f, n, d[0], d[1], force, fire);
             }
-            int drops = Math.round((45 + 30 * size) * amt);
-            Blood.spray(t, cx, cy, cz, d[0] * 0.5, 1, d[1] * 0.5, drops, 5f * (float) Math.sqrt(force), 1.0f);
-            Blood.spray(t, cx, cy, cz, d[0], 0.3, d[1], drops / 2, 6f, 0.4f);
-            for (int i = 0; i < 3; i++) Blood.mist(t, cx, cy + (i - 1) * l.height * 0.25, cz, 1.1f * (float) Math.sqrt(size));
-            Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.min(4f, Math.max(l.width * 2.4f, 1.2f)), 0.12f, Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
-            Sfx.burst(t, cx, cy, cz);
-            if (a != null && wet(t) && l.getDistanceSq(mc.player) < 3.2 * 3.2 && mc.gameSettings.thirdPersonView == 0) ScreenBlood.spray(t.color, k);
+            if (fire) {
+                // burnt up: smoke and embers, no blood
+                for (int i = 0; i < 3; i++) Blood.mist(BloodTypes.ember(), cx, cy + (i - 1) * l.height * 0.25, cz, 1.2f);
+                Blood.spray(BloodTypes.ember(), cx, cy, cz, 0, 1, 0, 25, 3f, 1f);
+                Sfx.burst(BloodTypes.ember(), cx, cy, cz);
+            } else {
+                int drops = Math.round((45 + 30 * size) * amt * (boom ? 1.5f : 1f));
+                double up = boom ? 1.4 : fall ? 0.2 : 1;
+                Blood.spray(t, cx, cy, cz, d[0] * 0.5, up, d[1] * 0.5, drops, 5f * (float) Math.sqrt(force), 1.0f);
+                Blood.spray(t, cx, cy, cz, d[0], 0.3, d[1], drops / 2, 6f, boom ? 1.2f : 0.4f);
+                for (int i = 0; i < 3; i++) Blood.mist(t, cx, cy + (i - 1) * l.height * 0.25, cz, 1.1f * (float) Math.sqrt(size));
+                Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.min(4f, Math.max(l.width * (fall ? 3.2f : 2.4f), 1.2f)), 0.12f,
+                        Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
+                Sfx.burst(t, cx, cy, cz);
+                if (a != null && wet(t) && l.getDistanceSq(mc.player) < 3.2 * 3.2 && mc.gameSettings.thirdPersonView == 0) ScreenBlood.spray(t.color, k);
+                if (boom && wet(t) && l.getDistanceSq(mc.player) < 6 * 6 && mc.gameSettings.thirdPersonView == 0) ScreenBlood.spray(t.color, 2f);
+            }
             // the body is gone: take it out of the world now, so there's no corpse for another mod to
             // draw, no shadow left behind, and no puff of smoke when it would have vanished
             if (!(l instanceof EntityPlayer)) l.setDead();
+        } else if (fire) {
+            Blood.mist(BloodTypes.ember(), cx, cy, cz, 0.9f);
+            Sfx.burn(cx, cy, cz);
         } else {
             // dies like vanilla, with a last spurt and a pool spreading under it
             Blood.spray(t, cx, cy, cz, d[0], 0.5, d[1], Math.round((14 + 10 * size) * amt), 3f, 0.6f);
             Blood.mist(t, cx, cy, cz, 0.8f);
             Sfx.hit(t, cx, cy, cz, k);
-            if (VisceralConfig.extras.bloodPools) Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.min(3.5f, Math.max(0.8f, l.width * 1.9f)), 3f, Blood.T_POOL);
+            if (VisceralConfig.extras.bloodPools) {
+                Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.min(3.5f, Math.max(0.8f, l.width * 1.9f)), 3f, Blood.T_POOL);
+                if (wet(t) && Blood.RAND.nextBoolean()) Flies.swarm(cx, l.posY + 0.1, cz, 50f, 18f);
+            }
         }
     }
 
@@ -309,6 +521,7 @@ public final class Tracker {
         Sfx.tear(t, pick.wx, pick.wy, pick.wz);
         if (VisceralConfig.extras.bloodPools) {
             Blood.groundStain(t, l.posX, l.posY + 0.1, l.posZ, Math.min(3.5f, Math.max(1f, l.width * 2.1f)), 3.5f, Blood.T_POOL);
+            if (wet(t) && Blood.RAND.nextBoolean()) Flies.swarm(l.posX, l.posY + 0.1, l.posZ, 50f, 18f);
         }
         return true;
     }

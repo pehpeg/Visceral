@@ -94,6 +94,9 @@ public class VisceralConfig {
         @Config.RangeDouble(min = 0.0, max = 1.0)
         public double limbLossChance = 0.4;
 
+        @Config.Comment("Walking into gibs knocks them about.")
+        public boolean kickable = true;
+
         @Config.Comment({"Not every death is a burst: some creatures lose their head (the neck pumping as they fall),",
                 "some a limb, and fall with a pool spreading under them. Off: every gib death is a burst."})
         public boolean deathStyles = true;
@@ -109,6 +112,12 @@ public class VisceralConfig {
         @Config.Comment("Creatures start dripping below this share (0-1) of their max health.")
         @Config.RangeDouble(min = 0.0, max = 1.0)
         public double bleedBelow = 0.5;
+
+        @Config.Comment("Walking through wet blood leaves bloody footprints (yours and creatures'), fainter with each step.")
+        public boolean footprints = true;
+
+        @Config.Comment("Flies gather and buzz over gore that's been lying around a while.")
+        public boolean flies = true;
 
         @Config.Comment("Hurt creatures get bloody: blood soaks into their skin, fur and armour, more the more hurt they are.")
         public boolean wounds = true;

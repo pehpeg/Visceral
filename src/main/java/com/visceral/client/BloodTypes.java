@@ -244,6 +244,11 @@ public final class BloodTypes {
 
     // ------------------------------------------------------------------ lookup
 
+    /** The embers type (smoke and sparks), for things burning up. */
+    static Type ember() {
+        return t("embers");
+    }
+
     public static Type of(Entity e) {
         String id = idOf(e);
         // the listed ids win (exact, then wildcards); not cached by class, as one class can have many ids
