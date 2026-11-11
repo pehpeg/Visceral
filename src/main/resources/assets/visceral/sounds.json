@@ -1,0 +1,386 @@
+{
+  "flesh.hit": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.hit",
+    "sounds": [
+      {
+        "name": "visceral:flesh_hit1"
+      },
+      {
+        "name": "visceral:flesh_hit2"
+      },
+      {
+        "name": "visceral:flesh_hit3"
+      },
+      {
+        "name": "visceral:flesh_hit4"
+      },
+      {
+        "name": "visceral:flesh_hit5"
+      },
+      {
+        "name": "visceral:flesh_hit6"
+      }
+    ]
+  },
+  "flesh.heavy": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.heavy",
+    "sounds": [
+      {
+        "name": "visceral:flesh_heavy1"
+      },
+      {
+        "name": "visceral:flesh_heavy2"
+      },
+      {
+        "name": "visceral:flesh_heavy3"
+      },
+      {
+        "name": "visceral:flesh_heavy4"
+      }
+    ]
+  },
+  "flesh.burst": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.burst",
+    "sounds": [
+      {
+        "name": "visceral:flesh_burst1"
+      },
+      {
+        "name": "visceral:flesh_burst2"
+      },
+      {
+        "name": "visceral:flesh_burst3"
+      },
+      {
+        "name": "visceral:flesh_burst4"
+      }
+    ]
+  },
+  "flesh.tear": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.tear",
+    "sounds": [
+      {
+        "name": "visceral:flesh_tear1"
+      },
+      {
+        "name": "visceral:flesh_tear2"
+      },
+      {
+        "name": "visceral:flesh_tear3"
+      },
+      {
+        "name": "visceral:flesh_tear4"
+      }
+    ]
+  },
+  "flesh.splat": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.splat",
+    "sounds": [
+      {
+        "name": "visceral:flesh_splat1"
+      },
+      {
+        "name": "visceral:flesh_splat2"
+      },
+      {
+        "name": "visceral:flesh_splat3"
+      },
+      {
+        "name": "visceral:flesh_splat4"
+      },
+      {
+        "name": "visceral:flesh_splat5"
+      },
+      {
+        "name": "visceral:flesh_splat6"
+      }
+    ]
+  },
+  "flesh.thud": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.thud",
+    "sounds": [
+      {
+        "name": "visceral:flesh_thud1"
+      },
+      {
+        "name": "visceral:flesh_thud2"
+      },
+      {
+        "name": "visceral:flesh_thud3"
+      },
+      {
+        "name": "visceral:flesh_thud4"
+      },
+      {
+        "name": "visceral:flesh_thud5"
+      }
+    ]
+  },
+  "flesh.gush": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.gush",
+    "sounds": [
+      {
+        "name": "visceral:flesh_gush1"
+      },
+      {
+        "name": "visceral:flesh_gush2"
+      },
+      {
+        "name": "visceral:flesh_gush3"
+      }
+    ]
+  },
+  "flesh.drip": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.flesh.drip",
+    "sounds": [
+      {
+        "name": "visceral:flesh_drip1"
+      },
+      {
+        "name": "visceral:flesh_drip2"
+      },
+      {
+        "name": "visceral:flesh_drip3"
+      },
+      {
+        "name": "visceral:flesh_drip4"
+      }
+    ]
+  },
+  "screen.splat": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.screen.splat",
+    "sounds": [
+      {
+        "name": "visceral:screen_splat1"
+      },
+      {
+        "name": "visceral:screen_splat2"
+      },
+      {
+        "name": "visceral:screen_splat3"
+      }
+    ]
+  },
+  "bone.crack": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.bone.crack",
+    "sounds": [
+      {
+        "name": "visceral:bone_crack1"
+      },
+      {
+        "name": "visceral:bone_crack2"
+      },
+      {
+        "name": "visceral:bone_crack3"
+      },
+      {
+        "name": "visceral:bone_crack4"
+      },
+      {
+        "name": "visceral:bone_crack5"
+      }
+    ]
+  },
+  "bone.shatter": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.bone.shatter",
+    "sounds": [
+      {
+        "name": "visceral:bone_shatter1"
+      },
+      {
+        "name": "visceral:bone_shatter2"
+      },
+      {
+        "name": "visceral:bone_shatter3"
+      }
+    ]
+  },
+  "bone.clatter": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.bone.clatter",
+    "sounds": [
+      {
+        "name": "visceral:bone_clatter1"
+      },
+      {
+        "name": "visceral:bone_clatter2"
+      },
+      {
+        "name": "visceral:bone_clatter3"
+      },
+      {
+        "name": "visceral:bone_clatter4"
+      }
+    ]
+  },
+  "slime.hit": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.slime.hit",
+    "sounds": [
+      {
+        "name": "visceral:slime_hit1"
+      },
+      {
+        "name": "visceral:slime_hit2"
+      },
+      {
+        "name": "visceral:slime_hit3"
+      },
+      {
+        "name": "visceral:slime_hit4"
+      }
+    ]
+  },
+  "slime.burst": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.slime.burst",
+    "sounds": [
+      {
+        "name": "visceral:slime_burst1"
+      },
+      {
+        "name": "visceral:slime_burst2"
+      },
+      {
+        "name": "visceral:slime_burst3"
+      }
+    ]
+  },
+  "slime.land": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.slime.land",
+    "sounds": [
+      {
+        "name": "visceral:slime_land1"
+      },
+      {
+        "name": "visceral:slime_land2"
+      },
+      {
+        "name": "visceral:slime_land3"
+      }
+    ]
+  },
+  "metal.hit": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.metal.hit",
+    "sounds": [
+      {
+        "name": "visceral:metal_hit1"
+      },
+      {
+        "name": "visceral:metal_hit2"
+      },
+      {
+        "name": "visceral:metal_hit3"
+      },
+      {
+        "name": "visceral:metal_hit4"
+      }
+    ]
+  },
+  "metal.burst": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.metal.burst",
+    "sounds": [
+      {
+        "name": "visceral:metal_burst1"
+      },
+      {
+        "name": "visceral:metal_burst2"
+      },
+      {
+        "name": "visceral:metal_burst3"
+      }
+    ]
+  },
+  "metal.land": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.metal.land",
+    "sounds": [
+      {
+        "name": "visceral:metal_land1"
+      },
+      {
+        "name": "visceral:metal_land2"
+      },
+      {
+        "name": "visceral:metal_land3"
+      },
+      {
+        "name": "visceral:metal_land4"
+      }
+    ]
+  },
+  "ember.hit": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.ember.hit",
+    "sounds": [
+      {
+        "name": "visceral:ember_hit1"
+      },
+      {
+        "name": "visceral:ember_hit2"
+      },
+      {
+        "name": "visceral:ember_hit3"
+      }
+    ]
+  },
+  "ember.burst": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.ember.burst",
+    "sounds": [
+      {
+        "name": "visceral:ember_burst1"
+      },
+      {
+        "name": "visceral:ember_burst2"
+      },
+      {
+        "name": "visceral:ember_burst3"
+      }
+    ]
+  },
+  "ecto.hit": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.ecto.hit",
+    "sounds": [
+      {
+        "name": "visceral:ecto_hit1"
+      },
+      {
+        "name": "visceral:ecto_hit2"
+      },
+      {
+        "name": "visceral:ecto_hit3"
+      }
+    ]
+  },
+  "ecto.burst": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.ecto.burst",
+    "sounds": [
+      {
+        "name": "visceral:ecto_burst1"
+      },
+      {
+        "name": "visceral:ecto_burst2"
+      },
+      {
+        "name": "visceral:ecto_burst3"
+      }
+    ]
+  }
+}
