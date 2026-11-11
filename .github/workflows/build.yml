@@ -11,11 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java 21 (runs Gradle; the mod itself is built for Java 8)
+      - name: Set up Java (8 and 17 for the build's tools, 21 runs Gradle)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '21'
+          distribution: zulu
+          java-version: |
+            8
+            17
+            21
 
       - name: Cache Gradle and decompiled Minecraft
         uses: actions/cache@v4
@@ -29,7 +32,7 @@ jobs:
       - name: Build
         run: |
           set -o pipefail
-          ./gradlew build --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew build --no-daemon --stacktrace -Porg.gradle.java.installations.fromEnv=JAVA_HOME_8_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64 2>&1 | tee build.log
 
       - name: Report compile errors
         if: failure()
@@ -69,10 +72,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up Java (8 and 17 for the build's tools, 21 runs Gradle)
+        uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '21'
+          distribution: zulu
+          java-version: |
+            8
+            17
+            21
 
       - name: Cache Gradle and decompiled Minecraft
         uses: actions/cache@v4
@@ -93,7 +100,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           set +e
-          timeout 1800 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClient -PvisceralTest --no-daemon > run.log 2>&1
+          timeout 1800 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClient -PvisceralTest --no-daemon -Porg.gradle.java.installations.fromEnv=JAVA_HOME_8_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64 > run.log 2>&1
           echo "exit code $?"
           grep -E '\.java:[0-9]+: error:' run.log | head -30 | sed -E 's#^.*/(src/[^:]+):([0-9]+): error: (.*)$#::error file=\1,line=\2::\3#'
           grep -h "\[autotest\]" run.log | sed 's/^.*\[autotest\] //' | head -60 | while IFS= read -r l; do echo "::notice title=autotest::$l"; done
