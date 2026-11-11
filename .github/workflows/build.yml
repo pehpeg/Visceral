@@ -64,6 +64,8 @@ jobs:
     # in src/testharness: screenshots, a report and the logs come out as the "ingame-test" artifact.
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -93,6 +95,7 @@ jobs:
           set +e
           timeout 1800 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClient -PvisceralTest --no-daemon > run.log 2>&1
           echo "exit code $?"
+          grep -E '\.java:[0-9]+: error:' run.log | head -30 | sed -E 's#^.*/(src/[^:]+):([0-9]+): error: (.*)$#::error file=\1,line=\2::\3#'
           grep -h "\[autotest\]" run.log | sed 's/^.*\[autotest\] //' | head -60 | while IFS= read -r l; do echo "::notice title=autotest::$l"; done
           grep -hE "Exception|Error:|ERROR\]" run.log | grep -iv "openal\|soundsystem\|narrator\|realms\|twitch" | head -15 | while IFS= read -r l; do echo "::warning title=log::$l"; done
           exit 0
@@ -105,7 +108,26 @@ jobs:
           cp run/logs/latest.log results/ 2>/dev/null || true
           cp -r run/crash-reports results/ 2>/dev/null || true
           cp run.log results/ 2>/dev/null || true
+          # screenshots as smaller JPEGs, so they can live on a branch
+          if [ -d results/visceral-test/screenshots ]; then
+            for f in results/visceral-test/screenshots/*.png; do
+              convert "$f" -resize 960x540 -quality 82 "${f%.png}.jpg" && rm "$f"
+            done
+          fi
           ls -R results | head -80
+
+      - name: Publish results to the test-results branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd results
+          git init -q
+          git checkout -q -b test-results
+          echo "Results of the in-game test for ${GITHUB_SHA}" > README.md
+          git add -A
+          git -c user.name="visceral-ci" -c user.email="visceral-ci@users.noreply.github.com" commit -q -m "In-game test results for ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" test-results
 
       - uses: actions/upload-artifact@v4
         if: always()
