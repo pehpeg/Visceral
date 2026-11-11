@@ -215,7 +215,11 @@ public final class Tracker {
             return;
         }
         if (!s.dead) bleed(mc, l, s, t, self);
-        else spurt(l, s, t);   // a corpse's fresh stump (a cut neck) keeps pumping as it falls
+        else {
+            spurt(l, s, t);
+            // a corpse hitting the ground
+            if (l.deathTime == 12 && !t.none() && !Gibs.burst(l.getEntityId())) Sfx.body(t, l.posX, l.posY, l.posZ, l.width * l.height);
+        }   // a corpse's fresh stump (a cut neck) keeps pumping as it falls
     }
 
     private static boolean wet(Type t) {
@@ -247,7 +251,7 @@ public final class Tracker {
 
     /** Gibs and lost limbs: not you, not bosses (their deaths are a show of their own), players if allowed. */
     private static boolean goreAllowed(EntityLivingBase l, boolean self) {
-        return !self && l.isNonBoss() && (!(l instanceof EntityPlayer) || VisceralConfig.gibs.players);
+        return !self && !VisceralConfig.extras.mild && l.isNonBoss() && (!(l instanceof EntityPlayer) || VisceralConfig.gibs.players);
     }
 
     // ------------------------------------------------------------------ hits
@@ -412,11 +416,12 @@ public final class Tracker {
                 Blood.mist(t, px, py, pz, 0.6f + 0.4f * k);
                 break;
         }
+        if (a != null && wet(t) && !self) HeldBlood.hit(t.color);
         if (k > 1.2f && h.cause != Cause.FALL) Blood.groundStain(t, l.posX + d[0] * 0.6, l.posY + 0.1, l.posZ + d[1] * 0.6, 0.5f + 0.3f * k, 0.15f, Blood.T_SPLAT0 + Blood.RAND.nextInt(Blood.T_SPLATS));
         Sfx.hit(t, px, py, pz, k);
 
         // a heavy enough hit can tear a limb off
-        if (!VisceralConfig.gibs.limbLoss || !goreAllowed(l, self)) return;
+        if (!VisceralConfig.gibs.limbLoss || !goreAllowed(l, self) || !BloodTypes.options(l).limbs) return;
         if (dmg < VisceralConfig.gibs.limbLossDamage * l.getMaxHealth()) return;
         if (Blood.RAND.nextDouble() >= VisceralConfig.gibs.limbLossChance) return;
         ModelParts.Capture cap = ModelParts.capture(l, 1f);
@@ -485,11 +490,12 @@ public final class Tracker {
             if (VisceralConfig.extras.bloodPools && wet(t) && !l.isInWater()) Blood.groundStain(t, cx, l.posY + 0.1, cz, Math.max(0.6f, l.width * 1.2f), 4f, Blood.T_POOL);
             return;
         }
-        boolean roll = boom || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance;
+        BloodTypes.Options opt = BloodTypes.options(l);
+        boolean roll = (boom && opt.gibs > 0) || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance * opt.gibs;
         boolean yours = !VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE;
         boolean gib = VisceralConfig.gibs.deathGibs && goreAllowed(l, false) && roll && yours;
         if (!gib) {
-            String why = !VisceralConfig.gibs.deathGibs ? "death gibs are off" : !l.isNonBoss() ? "it's a boss"
+            String why = VisceralConfig.extras.mild ? "mild mode" : !VisceralConfig.gibs.deathGibs ? "death gibs are off" : !l.isNonBoss() ? "it's a boss"
                     : l instanceof EntityPlayer && !VisceralConfig.gibs.players ? "players don't gib (setting)"
                     : !yours ? "not your kill (onlyYourKills)" : !roll ? "gibChance roll" : "?";
             lastDeath = name(l) + ": died normally (" + why + ") [" + h.cause.name().toLowerCase() + "]";
@@ -498,7 +504,7 @@ public final class Tracker {
             float force = (float) VisceralConfig.gibs.force * (0.8f + 0.25f * Math.min(2f, k)) * (boom ? 2.2f : fall ? 1.2f : 1f);
             ModelParts.Capture cap = ModelParts.capture(l, 1f);
             // not every death is a burst: some lose their head, some a limb, and fall
-            int style = boom || fire || fall ? 0 : testStyle >= 0 ? testStyle : !VisceralConfig.gibs.deathStyles ? 0
+            int style = boom || fire || fall ? 0 : testStyle >= 0 ? testStyle : !VisceralConfig.gibs.deathStyles || !opt.styles ? 0
                     : Blood.RAND.nextFloat() < 0.55f ? 0 : Blood.RAND.nextFloat() < 0.6f ? 1 : 2;
             if (style > 0 && cap != null && partDeath(mc, l, s, t, cap, style, d, force, size)) {
                 lastDeath = name(l) + ": " + (style == 1 ? "decapitated" : "lost a limb and fell") + " [" + h.cause.name().toLowerCase() + "]";
@@ -507,7 +513,7 @@ public final class Tracker {
             float lift = boom ? 4f : fall ? -2f : 0f;
             boolean parts = Gibs.burst(l, cap, t, d[0], d[1], force, fire, lift);
             if (VisceralConfig.gibs.chunks || !parts) {
-                int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f) * (boom ? 1.6f : 1f));
+                int n = Math.round(VisceralConfig.gibs.chunkCount * (float) Math.sqrt(size) * (parts ? 1f : 1.6f) * (boom ? 1.6f : 1f) * (float) opt.chunks);
                 if (!parts) n = Math.max(n, 10);
                 // a model we couldn't read: it bursts into chunks of its own colours
                 int own = parts ? -1 : ModelParts.averageColor(l);

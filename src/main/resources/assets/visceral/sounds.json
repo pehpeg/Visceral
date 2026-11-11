@@ -415,5 +415,23 @@
         "name": "visceral:flesh_step4"
       }
     ]
+  },
+  "body.fall": {
+    "category": "neutral",
+    "subtitle": "visceral.subtitle.body.fall",
+    "sounds": [
+      {
+        "name": "visceral:body_fall1"
+      },
+      {
+        "name": "visceral:body_fall2"
+      },
+      {
+        "name": "visceral:body_fall3"
+      },
+      {
+        "name": "visceral:body_fall4"
+      }
+    ]
   }
 }

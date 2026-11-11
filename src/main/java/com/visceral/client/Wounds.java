@@ -50,7 +50,7 @@ public final class Wounds {
     private static final Map<Integer, Integer> FORCED = new HashMap<>();
 
     static boolean on() {
-        return VisceralConfig.enabled && VisceralConfig.extras.wounds;
+        return VisceralConfig.enabled && VisceralConfig.extras.wounds && !VisceralConfig.extras.mild;
     }
 
     /** How bloody a creature is: 0 none, 1-4. */
@@ -84,6 +84,7 @@ public final class Wounds {
         if (active > 0) end();   // a creature before this one never finished (another mod skipped its Post)
         if (!on()) return;
         EntityLivingBase e = event.getEntity();
+        if (!BloodTypes.options(e).wounds) return;
         int lv = level(e);
         if (lv <= 0) return;
         Type t = BloodTypes.of(e);

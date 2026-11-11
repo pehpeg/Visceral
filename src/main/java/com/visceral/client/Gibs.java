@@ -132,6 +132,11 @@ public final class Gibs {
         return GIBS.size();
     }
 
+    /** Every gib gone (the settings screen's "Clear all gore"); torn-off limbs stay torn off. */
+    static void clearAll() {
+        GIBS.clear();
+    }
+
     // ------------------------------------------------------------------ spawning
 
     /**
@@ -775,7 +780,7 @@ public final class Gibs {
     private static final net.minecraft.client.renderer.culling.Frustum FRUSTUM = new net.minecraft.client.renderer.culling.Frustum();
 
     static boolean stumpsOn() {
-        return VisceralConfig.enabled && VisceralConfig.extras.stumps;
+        return VisceralConfig.enabled && VisceralConfig.extras.stumps && !VisceralConfig.extras.mild;
     }
 
     /** The cut end of a limb: a thin slab of raw flesh with bone in the middle, w x d blocks, at the joint. */

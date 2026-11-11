@@ -812,6 +812,14 @@ public final class Blood {
 
     static int stainCount() { return STAINS.size(); }
 
+    /** Every droplet and stain gone (the settings screen's "Clear all gore"). */
+    static void clearAll() {
+        DROPS.clear();
+        STAINS.clear();
+        FLOOR.clear();
+        clouds = 0;
+    }
+
     private static float tu(int tile) { return (tile % 4) * 0.25f; }
     private static float tv(int tile) { return (tile / 4) * 0.25f; }
 

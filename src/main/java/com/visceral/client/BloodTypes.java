@@ -102,6 +102,25 @@ public final class BloodTypes {
         }
     }
 
+    /**
+     * Per-creature options from the json: instead of just a type name, a creature's entry can be
+     * {"blood": "red", "gibs": 0.5, "limbs": false, "styles": false, "wounds": true, "chunks": 2}.
+     */
+    public static final class Options {
+        public String blood;            // a type name, or null: worked out as usual
+        public double gibs = 1;         // multiplies gibChance (0 = never bursts)
+        public boolean limbs = true;    // can lose limbs
+        public boolean styles = true;   // decapitations and limb-off deaths
+        public boolean wounds = true;   // blood soaks into it
+        public double chunks = 1;       // multiplies the number of chunks
+    }
+
+    public static final Options DEFAULT_OPTIONS = new Options();
+    private static final Map<String, Options> OPT_EXACT = new HashMap<>();
+    private static final List<Object[]> OPT_WILD = new ArrayList<>();   // {Pattern, Options}
+    private static final Map<String, Type> RECOLOURED = new HashMap<>();
+    private static final Type MILD = new Type("mild", 0xD9D4C8, 0xD9D4C8, Style.DUST);
+
     private static final Map<String, Type> TYPES = new LinkedHashMap<>();
     private static final Map<String, String> EXACT = new HashMap<>();
     private static final List<Object[]> WILD = new ArrayList<>();   // {Pattern, typeName}
@@ -119,6 +138,9 @@ public final class BloodTypes {
         EXACT.clear();
         WILD.clear();
         CACHE.clear();
+        OPT_EXACT.clear();
+        OPT_WILD.clear();
+        RECOLOURED.clear();
         defaults();
         if (file == null) return;
         try {
@@ -142,8 +164,25 @@ public final class BloodTypes {
                 if (root.has("creatures")) {
                     for (Map.Entry<String, JsonElement> en : root.getAsJsonObject("creatures").entrySet()) {
                         String key = en.getKey().trim().toLowerCase(Locale.ROOT);
-                        String type = en.getValue().getAsString().trim().toLowerCase(Locale.ROOT);
                         if (key.startsWith("_")) continue;
+                        String type;
+                        if (en.getValue().isJsonObject()) {
+                            // the long form, with options
+                            JsonObject o = en.getValue().getAsJsonObject();
+                            Options op = new Options();
+                            if (o.has("blood")) op.blood = o.get("blood").getAsString().trim().toLowerCase(Locale.ROOT);
+                            if (o.has("gibs")) op.gibs = o.get("gibs").getAsDouble();
+                            if (o.has("limbs")) op.limbs = o.get("limbs").getAsBoolean();
+                            if (o.has("styles")) op.styles = o.get("styles").getAsBoolean();
+                            if (o.has("wounds")) op.wounds = o.get("wounds").getAsBoolean();
+                            if (o.has("chunks")) op.chunks = o.get("chunks").getAsDouble();
+                            if (key.contains("*")) OPT_WILD.add(new Object[]{Pattern.compile(("\\Q" + key + "\\E").replace("*", "\\E.*\\Q")), op});
+                            else OPT_EXACT.put(key.contains(":") ? key : "minecraft:" + key, op);
+                            if (op.blood == null) continue;
+                            type = op.blood;
+                        } else {
+                            type = en.getValue().getAsString().trim().toLowerCase(Locale.ROOT);
+                        }
                         if (key.contains("*")) {
                             String rx = ("\\Q" + key + "\\E").replace("*", "\\E.*\\Q");
                             WILD.add(new Object[]{Pattern.compile(rx), type});
@@ -249,7 +288,36 @@ public final class BloodTypes {
         return t("embers");
     }
 
+    /** A creature's options from the json (the defaults if it has none). */
+    public static Options options(Entity e) {
+        String id = idOf(e);
+        if (id == null) return DEFAULT_OPTIONS;
+        Options o = OPT_EXACT.get(id);
+        if (o != null) return o;
+        for (Object[] w : OPT_WILD) if (((Pattern) w[0]).matcher(id).matches()) return (Options) w[1];
+        return DEFAULT_OPTIONS;
+    }
+
+    /**
+     * What a creature bleeds, after the settings: in mild mode everything puffs pale dust instead
+     * of bleeding; with a blood colour set, every liquid blood takes that colour.
+     */
     public static Type of(Entity e) {
+        if (com.visceral.VisceralConfig.extras.mild) return MILD;
+        Type t = natural(e);
+        String col = com.visceral.VisceralConfig.extras.bloodColor;
+        if (col == null || col.trim().isEmpty() || !(t.style == Style.LIQUID || t.style == Style.SLIME)) return t;
+        Type r = RECOLOURED.get(t.name + "|" + col);
+        if (r == null) {
+            int c;
+            try { c = parseColor(col); } catch (RuntimeException ex) { return t; }
+            r = new Type(t.name, c, c, t.style);
+            RECOLOURED.put(t.name + "|" + col, r);
+        }
+        return r;
+    }
+
+    private static Type natural(Entity e) {
         String id = idOf(e);
         // the listed ids win (exact, then wildcards); not cached by class, as one class can have many ids
         if (id != null) {

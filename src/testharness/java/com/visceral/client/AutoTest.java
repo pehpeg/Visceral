@@ -104,7 +104,7 @@ public final class AutoTest {
                 return;
             }
             if (mc.world == null || mc.player == null || mc.getIntegratedServer() == null) return;
-            if (mc.currentScreen != null) mc.displayGuiScreen(null);
+            if (mc.currentScreen != null && !(mc.currentScreen instanceof GuiVisceral)) mc.displayGuiScreen(null);
             tick++;
             if (phase == 0 && tick > 60) { phase = 1; plan(mc); }
             while (!STEPS.isEmpty() && STEPS.get(0).at <= tick) STEPS.remove(0).r.run();
@@ -203,13 +203,27 @@ public final class AutoTest {
         at(t + 20, () -> shot("99_overview"));
         at(t + 25, () -> server(() -> splayer().connection.setPlayerLocation(-2.5, baseY + 1, -1.5, -30f, 25f)));
         at(t + 45, () -> shot("99_overview_side"));
+        // your weapon after a fight, then the settings screen
+        at(t + 46, () -> server(() -> {
+            EntityPlayerMP p = splayer();
+            p.inventory.setInventorySlotContents(0, new net.minecraft.item.ItemStack(net.minecraft.init.Items.IRON_SWORD));
+            p.connection.setPlayerLocation(0.5, baseY, 0.5, 0f, 10f);
+        }));
         at(t + 50, () -> {
+            for (int i = 0; i < 8; i++) HeldBlood.hit(0x8A0B0B);
             Minecraft m = Minecraft.getMinecraft();
             m.gameSettings.hideGUI = false;
+        });
+        at(t + 54, () -> shot("96_bloody_weapon"));
+        at(t + 56, () -> Minecraft.getMinecraft().displayGuiScreen(new GuiVisceral(null)));
+        at(t + 60, () -> shot("97_settings"));
+        at(t + 62, () -> Minecraft.getMinecraft().displayGuiScreen(null));
+        at(t + 64, () -> {
+            Minecraft m = Minecraft.getMinecraft();
             m.gameSettings.showDebugInfo = true;
         });
-        at(t + 55, () -> shot("98_f3"));
-        at(t + 60, () -> finish(Minecraft.getMinecraft()));
+        at(t + 68, () -> shot("98_f3"));
+        at(t + 72, () -> finish(Minecraft.getMinecraft()));
     }
 
     private static int special(int t) {

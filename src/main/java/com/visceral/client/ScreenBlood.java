@@ -38,7 +38,8 @@ public final class ScreenBlood {
     private static float clock;
 
     private static boolean on() {
-        return VisceralConfig.enabled && VisceralConfig.extras.screenBlood && VisceralConfig.extras.screenBloodStrength > 0;
+        return VisceralConfig.enabled && VisceralConfig.extras.screenBlood && VisceralConfig.extras.screenBloodStrength > 0
+                && !VisceralConfig.extras.mild;
     }
 
     /** You got hurt: k about 0.3 (a scratch) to 2.5 (a huge hit). */

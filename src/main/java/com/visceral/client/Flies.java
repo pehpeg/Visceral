@@ -40,6 +40,10 @@ public final class Flies {
     private static World lastWorld;
     private static float clock, nextBuzz;
 
+    static void clearAll() {
+        SWARMS.clear();
+    }
+
     static int count() {
         int n = 0;
         for (Swarm s : SWARMS) if (clock >= s.born) n += s.n;
@@ -53,7 +57,7 @@ public final class Flies {
 
     /** As swarm(), the flies only turning up after `delay` seconds. */
     static void swarm(double x, double y, double z, float seconds, float delay) {
-        if (!VisceralConfig.enabled || !VisceralConfig.extras.flies || SWARMS.size() >= 24) return;
+        if (!VisceralConfig.enabled || !VisceralConfig.extras.flies || VisceralConfig.extras.mild || SWARMS.size() >= 24) return;
         Swarm s = new Swarm(4 + Blood.RAND.nextInt(6));
         s.x = x; s.y = y; s.z = z;
         s.born = clock + delay;

@@ -178,6 +178,17 @@ public class VisceralConfig {
         @Config.RangeDouble(min = 0.0, max = 2.0)
         public double screenBloodStrength = 1.0;
 
+        @Config.Comment({"Mild mode: no blood, gibs, wounds or limbs. Hits and deaths give a puff of pale dust instead,",
+                "for when you want the hit feedback without the gore."})
+        public boolean mild = false;
+
+        @Config.Comment({"Give all blood one colour instead of each creature's own, e.g. #2E8B57 for green. Empty = natural.",
+                "Only liquid and slime blood; bone dust, sparks, embers and ecto keep theirs."})
+        public String bloodColor = "";
+
+        @Config.Comment("Hitting things gets blood on your weapon and hand, building up with each hit and washing off in water.")
+        public boolean bloodyWeapon = true;
+
         @Config.Comment("Squelches, cracks and splats.")
         public boolean sounds = true;
 

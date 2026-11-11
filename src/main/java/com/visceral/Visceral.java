@@ -22,6 +22,7 @@ import java.io.File;
         name = Visceral.NAME,
         version = Visceral.VERSION,
         clientSideOnly = true,
+        guiFactory = "com.visceral.client.GuiFactory",
         acceptedMinecraftVersions = "[1.12.2]"
 )
 public class Visceral {

@@ -113,6 +113,18 @@ final class Sfx {
         play("flesh.drip", x, y, z, 0.35f, 1f);
     }
 
+    /** A body dropping to the ground; `size` = width x height. */
+    static void body(Type t, double x, double y, double z, float size) {
+        float v = Math.min(1.2f, 0.45f + size * 0.3f);
+        float p = Math.max(0.6f, 1.15f - size * 0.15f);   // bigger bodies land deeper
+        switch (t.style) {
+            case LIQUID: case SLIME: play("body.fall", x, y, z, v, p); break;
+            case DUST: play("bone.clatter", x, y, z, v, p); break;
+            case SPARKS: play("metal.land", x, y, z, v, p * 0.8f); break;
+            default: play("body.fall", x, y, z, v * 0.7f, p); break;
+        }
+    }
+
     /** Flies buzzing over old gore. */
     static void buzz(double x, double y, double z) {
         play("flies.buzz", x, y, z, 0.45f, 1f);
