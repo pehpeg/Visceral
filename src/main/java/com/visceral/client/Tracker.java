@@ -93,6 +93,8 @@ public final class Tracker {
 
     private static final Map<Integer, State> STATES = new HashMap<>();
     private static final Map<Integer, Attack> ATTACKS = new HashMap<>();
+    /** When you last hit each creature, kept longer: a fire you started that kills it later is your kill. */
+    private static final Map<Integer, Float> YOUR_HITS = new HashMap<>();
     private static float clock;
     private static int tick;
     private static World lastWorld;
@@ -114,6 +116,7 @@ public final class Tracker {
             a.x = ray.hitVec.x; a.y = ray.hitVec.y; a.z = ray.hitVec.z;
         }
         ATTACKS.put(event.getTarget().getEntityId(), a);
+        YOUR_HITS.put(event.getTarget().getEntityId(), clock);
     }
 
     @SubscribeEvent
@@ -128,11 +131,13 @@ public final class Tracker {
             lastWorld = mc.world;
             STATES.clear();
             ATTACKS.clear();
+            YOUR_HITS.clear();
         }
         if (mc.world == null || mc.player == null || mc.isGamePaused()) return;
         clock += DT;
         tick++;
         ATTACKS.values().removeIf(a -> clock - a.time > 1.2f);
+        if (tick % 20 == 0) YOUR_HITS.values().removeIf(at -> clock - at > 15f);
         boolean on = VisceralConfig.enabled;
         double range = VisceralConfig.blood.range;
         List<Entity> list = new ArrayList<>(mc.world.loadedEntityList);
@@ -510,7 +515,7 @@ public final class Tracker {
         boolean roll = (boom && opt.gibs > 0) || Blood.RAND.nextDouble() < VisceralConfig.gibs.gibChance * opt.gibs;
         // a fire you started (Fire Aspect, a flame bow) that finishes it off a few seconds later is your kill too
         boolean yours = !VisceralConfig.gibs.onlyYourKills || a != null || h.cause == Cause.PROJECTILE
-                || (fire && mine(l.getEntityId(), 12f) != null);
+                || (fire && YOUR_HITS.containsKey(l.getEntityId()) && clock - YOUR_HITS.get(l.getEntityId()) <= 12f);
         boolean gib = VisceralConfig.gibs.deathGibs && goreAllowed(l, false) && roll && yours;
         if (!gib) {
             String why = VisceralConfig.extras.mild ? "mild mode" : !VisceralConfig.gibs.deathGibs ? "death gibs are off" : !l.isNonBoss() ? "it's a boss"
