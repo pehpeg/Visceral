@@ -204,9 +204,9 @@ public final class AutoTest {
         at(t + 25, () -> server(() -> splayer().connection.setPlayerLocation(-2.5, baseY + 1, -1.5, -30f, 25f)));
         at(t + 45, () -> shot("99_overview_side"));
         at(t + 50, () -> {
-            Minecraft mc = Minecraft.getMinecraft();
-            mc.gameSettings.hideGUI = false;
-            mc.gameSettings.showDebugInfo = true;
+            Minecraft m = Minecraft.getMinecraft();
+            m.gameSettings.hideGUI = false;
+            m.gameSettings.showDebugInfo = true;
         });
         at(t + 55, () -> shot("98_f3"));
         at(t + 60, () -> finish(Minecraft.getMinecraft()));
